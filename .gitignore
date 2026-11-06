@@ -35,3 +35,8 @@ Thumbs.db
 .vscode/
 .idea/
 
+#bat
+run.bat
+host.bat
+stop.bat
+
