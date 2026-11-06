@@ -1,0 +1,531 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUM DEFINITIONS
+// ============================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  KASIR
+}
+
+enum AccountType {
+  ASET
+  KEWAJIBAN
+  EKUITAS
+  PENDAPATAN
+  BEBAN
+}
+
+enum NormalBalance {
+  DEBIT
+  KREDIT
+}
+
+enum JournalEntryType {
+  PENJUALAN
+  PENGELUARAN
+  PENYESUAIAN
+  TRANSFER
+  PEMBUKAAN
+  PENUTUPAN
+}
+
+enum TransactionType {
+  PEMASUKAN
+  PENGELUARAN
+}
+
+enum PaymentMethod {
+  TUNAI
+  TRANSFER
+  QRIS
+  DEBIT
+  KREDIT
+}
+
+enum StockMovementType {
+  MASUK
+  KELUAR
+  OPNAME
+  RETUR
+}
+
+// ============================================================
+// TABEL: users
+// Menyimpan data pengguna sistem (Super Admin, Admin, Kasir)
+// ============================================================
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique @db.VarChar(50)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  fullName     String    @map("full_name") @db.VarChar(100)
+  role         UserRole  @default(KASIR)
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  // Relasi
+  userBusinessAccess  UserBusinessAccess[]
+  journalsCreated     JournalEntry[]       @relation("JournalCreatedBy")
+  transactionsCreated Transaction[]        @relation("TransactionCreatedBy")
+  employees           Employee[]
+  salaryPaymentsCreated SalaryPayment[]   @relation("SalaryPaymentCreatedBy")
+  deductionsCreated   EmployeeDeduction[] @relation("DeductionCreatedBy")
+
+  @@map("users")
+}
+
+// ============================================================
+// TABEL: businesses
+// Unit usaha / cabang yang dikelola dalam sistem
+// ============================================================
+model Business {
+  id          Int       @id @default(autoincrement())
+  name        String    @db.VarChar(150)
+  code        String    @unique @db.VarChar(20)
+  address     String?   @db.Text
+  phone       String?   @db.VarChar(20)
+  description String?   @db.Text
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  // Relasi
+  userBusinessAccess UserBusinessAccess[]
+  accounts           Account[]
+  products           Product[]
+  transactions       Transaction[]
+  journalEntries     JournalEntry[]
+  stockMovements     StockMovement[]
+  inventoryItems     InventoryItem[]
+  inventoryMovements InventoryMovement[]
+  employees          Employee[]
+  salaryPayments     SalaryPayment[]
+  employeeDeductions EmployeeDeduction[]
+
+  @@map("businesses")
+}
+
+// ============================================================
+// TABEL: user_business_access (Junction Table)
+// Menentukan pengguna mana yang memiliki akses ke unit usaha apa
+// ============================================================
+model UserBusinessAccess {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  businessId Int      @map("business_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relasi
+  user     User     @relation(fields: [userId], references: [id])
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@unique([userId, businessId])
+  @@map("user_business_access")
+}
+
+// ============================================================
+// TABEL: accounts (Chart of Accounts - CoA)
+// Daftar akun akuntansi per unit usaha
+// ============================================================
+model Account {
+  id            Int           @id @default(autoincrement())
+  businessId    Int           @map("business_id")
+  code          String        @db.VarChar(20)
+  name          String        @db.VarChar(150)
+  type          AccountType
+  normalBalance NormalBalance @map("normal_balance")
+  parentId      Int?          @map("parent_id")
+  isActive      Boolean       @default(true) @map("is_active")
+  description   String?       @db.Text
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  // Relasi
+  business     Business      @relation(fields: [businessId], references: [id])
+  parent       Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children     Account[]     @relation("AccountHierarchy")
+  journalItems JournalItem[]
+  inventoryItems InventoryItem[]
+  salaryPayments SalaryPayment[]
+
+  @@unique([businessId, code])
+  @@map("accounts")
+}
+
+// ============================================================
+// TABEL: products
+// Produk / barang yang dijual atau digunakan dalam usaha
+// ============================================================
+model Product {
+  id            Int       @id @default(autoincrement())
+  businessId    Int       @map("business_id")
+  code          String    @db.VarChar(50)
+  name          String    @db.VarChar(200)
+  unit          String    @default("PCS") @db.VarChar(20)
+  sellingPrice  Decimal   @map("selling_price") @db.Decimal(15, 2)
+  purchasePrice Decimal   @default(0) @map("purchase_price") @db.Decimal(15, 2)
+  currentStock  Decimal   @default(0) @map("current_stock") @db.Decimal(15, 2)
+  minimumStock  Decimal   @default(0) @map("minimum_stock") @db.Decimal(15, 2)
+  isActive      Boolean   @default(true) @map("is_active")
+  description   String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  // Relasi
+  business         Business          @relation(fields: [businessId], references: [id])
+  transactionItems TransactionItem[]
+  stockMovements   StockMovement[]
+
+  @@unique([businessId, code])
+  @@map("products")
+}
+
+// ============================================================
+// TABEL: transactions
+// Header transaksi kasir (penjualan / pengeluaran)
+// ============================================================
+model Transaction {
+  id              Int             @id @default(autoincrement())
+  businessId      Int             @map("business_id")
+  nomorBukti      String          @unique @map("nomor_bukti") @db.VarChar(50)
+  type            TransactionType
+  totalAmount     Decimal         @map("total_amount") @db.Decimal(15, 2)
+  discountAmount  Decimal         @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  taxAmount       Decimal         @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  grandTotal      Decimal         @map("grand_total") @db.Decimal(15, 2)
+  paymentMethod   PaymentMethod   @map("payment_method")
+  cashPaid        Decimal?        @map("cash_paid") @db.Decimal(15, 2)
+  changeAmount    Decimal?        @map("change_amount") @db.Decimal(15, 2)
+  notes           String?         @db.Text
+  transactionDate DateTime        @default(now()) @map("transaction_date")
+  createdById     Int             @map("created_by_id")
+  voidedAt        DateTime?       @map("voided_at")
+  voidReason      String?         @map("void_reason") @db.Text
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  // Relasi
+  business     Business          @relation(fields: [businessId], references: [id])
+  createdBy    User              @relation("TransactionCreatedBy", fields: [createdById], references: [id])
+  items        TransactionItem[]
+  journalEntry JournalEntry?
+
+  @@map("transactions")
+}
+
+// ============================================================
+// TABEL: transaction_items
+// Detail item pada setiap transaksi
+// ============================================================
+model TransactionItem {
+  id            Int      @id @default(autoincrement())
+  transactionId Int      @map("transaction_id")
+  productId     Int?     @map("product_id")
+  itemName      String   @map("item_name") @db.VarChar(200)
+  quantity      Decimal  @db.Decimal(15, 2)
+  unitPrice     Decimal  @map("unit_price") @db.Decimal(15, 2)
+  subtotal      Decimal  @db.Decimal(15, 2)
+
+  // Relasi
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  product     Product?    @relation(fields: [productId], references: [id])
+
+  @@map("transaction_items")
+}
+
+// ============================================================
+// TABEL: journal_entries
+// Header jurnal akuntansi (double-entry bookkeeping)
+// ============================================================
+model JournalEntry {
+  id             Int              @id @default(autoincrement())
+  businessId     Int              @map("business_id")
+  transactionId  Int?             @unique @map("transaction_id")
+  nomorJurnal    String           @unique @map("nomor_jurnal") @db.VarChar(50)
+  type           JournalEntryType
+  description    String           @db.Text
+  totalDebit     Decimal          @map("total_debit") @db.Decimal(15, 2)
+  totalKredit    Decimal          @map("total_kredit") @db.Decimal(15, 2)
+  journalDate    DateTime         @map("journal_date")
+  isReversed     Boolean          @default(false) @map("is_reversed")
+  reversedFromId Int?             @map("reversed_from_id")
+  createdById    Int              @map("created_by_id")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  // Relasi
+  business     Business      @relation(fields: [businessId], references: [id])
+  transaction  Transaction?  @relation(fields: [transactionId], references: [id])
+  createdBy    User          @relation("JournalCreatedBy", fields: [createdById], references: [id])
+  reversedFrom JournalEntry? @relation("JournalReversal", fields: [reversedFromId], references: [id])
+  reversalOf   JournalEntry[] @relation("JournalReversal")
+  items        JournalItem[]
+  inventoryMovement InventoryMovement?
+  salaryPayment SalaryPayment?
+
+  @@map("journal_entries")
+}
+
+// ============================================================
+// TABEL: journal_items
+// Detail baris debit/kredit pada setiap jurnal
+// INVARIANT: SUM(amount WHERE isDebit=true) = SUM(amount WHERE isDebit=false)
+// ============================================================
+model JournalItem {
+  id             Int     @id @default(autoincrement())
+  journalEntryId Int     @map("journal_entry_id")
+  accountId      Int     @map("account_id")
+  isDebit        Boolean @map("is_debit")
+  amount         Decimal @db.Decimal(15, 2)
+  description    String? @db.VarChar(255)
+
+  // Relasi
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id])
+  account      Account      @relation(fields: [accountId], references: [id])
+
+  @@map("journal_items")
+}
+
+// ============================================================
+// TABEL: stock_movements
+// Riwayat pergerakan stok produk (masuk/keluar/opname)
+// ============================================================
+model StockMovement {
+  id          Int               @id @default(autoincrement())
+  businessId  Int               @map("business_id")
+  productId   Int               @map("product_id")
+  type        StockMovementType
+  quantity    Decimal           @db.Decimal(15, 2)
+  stockBefore Decimal           @map("stock_before") @db.Decimal(15, 2)
+  stockAfter  Decimal           @map("stock_after") @db.Decimal(15, 2)
+  reference   String?           @db.VarChar(100)
+  notes       String?           @db.Text
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  // Relasi
+  business Business @relation(fields: [businessId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@map("stock_movements")
+}
+
+// ============================================================
+// ENUM: Kategori & Status Inventaris
+// ============================================================
+enum InventoryCategory {
+  BAHAN_BAKU
+  PERLENGKAPAN
+  PERALATAN_ASET
+  BARANG_DAGANGAN
+  LAINNYA
+}
+
+enum InventoryCondition {
+  BAIK
+  RUSAK_RINGAN
+  RUSAK_BERAT
+}
+
+enum InventoryMovementType {
+  MASUK
+  KELUAR
+  OPNAME
+}
+
+// ============================================================
+// TABEL: inventory_items
+// Pencatatan murni inventaris & persediaan fisik (bahan baku, perlengkapan, aset)
+// ============================================================
+model InventoryItem {
+  id              Int                @id @default(autoincrement())
+  businessId      Int                @map("business_id")
+  code            String             @db.VarChar(50)
+  name            String             @db.VarChar(200)
+  category        InventoryCategory  @default(BAHAN_BAKU)
+  unit            String             @default("PCS") @db.VarChar(30)
+  quantity        Decimal            @default(0) @db.Decimal(15, 2)
+  minimumStock    Decimal            @default(0) @map("minimum_stock") @db.Decimal(15, 2)
+  unitPrice       Decimal            @default(0) @map("unit_price") @db.Decimal(15, 2)
+  storageLocation String?            @map("storage_location") @db.VarChar(150)
+  condition       InventoryCondition @default(BAIK)
+  itemDate        DateTime           @default(now()) @map("item_date")
+  notes           String?            @db.Text
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  deletedAt       DateTime?          @map("deleted_at")
+
+  // Relasi
+  business  Business            @relation(fields: [businessId], references: [id])
+  account   Account?            @relation(fields: [accountId], references: [id])
+  movements InventoryMovement[]
+
+  accountId       Int?               @map("account_id")
+
+  @@unique([businessId, code])
+  @@map("inventory_items")
+}
+
+// ============================================================
+// TABEL: inventory_movements
+// Kartu stok / riwayat mutasi keluar-masuk barang inventaris
+// ============================================================
+model InventoryMovement {
+  id           Int                   @id @default(autoincrement())
+  businessId   Int                   @map("business_id")
+  itemId       Int                   @map("item_id")
+  type         InventoryMovementType
+  quantity     Decimal               @db.Decimal(15, 2)
+  stockBefore  Decimal               @map("stock_before") @db.Decimal(15, 2)
+  stockAfter   Decimal               @map("stock_after") @db.Decimal(15, 2)
+  unitPrice    Decimal?              @map("unit_price") @db.Decimal(15, 2)
+  reference    String?               @db.VarChar(100)
+  notes        String?               @db.Text
+  movementDate DateTime              @default(now()) @map("movement_date")
+  createdAt    DateTime              @default(now()) @map("created_at")
+
+  // Relasi
+  business     Business      @relation(fields: [businessId], references: [id])
+  item         InventoryItem @relation(fields: [itemId], references: [id])
+  journalEntry JournalEntry? @relation(fields: [journalEntryId], references: [id])
+
+  journalEntryId Int?        @unique @map("journal_entry_id")
+
+  @@map("inventory_movements")
+}
+
+// ============================================================
+// TABEL: employees
+// Data karyawan / staf unit usaha dan profil kompensasi gaji
+// ============================================================
+model Employee {
+  id           Int       @id @default(autoincrement())
+  businessId   Int       @map("business_id")
+  userId       Int?      @map("user_id")
+  code         String    @db.VarChar(50)
+  name         String    @db.VarChar(150)
+  position     String    @db.VarChar(100)
+  phone        String?   @db.VarChar(25)
+  salaryType   String    @default("BULANAN") @map("salary_type") @db.VarChar(20)
+  baseSalary   Decimal   @default(0) @map("base_salary") @db.Decimal(15, 2)
+  allowance    Decimal   @default(0) @map("allowance") @db.Decimal(15, 2)
+  bankName     String?   @map("bank_name") @db.VarChar(50)
+  bankAccount  String?   @map("bank_account") @db.VarChar(50)
+  joinDate     DateTime  @default(now()) @map("join_date")
+  isActive     Boolean   @default(true) @map("is_active")
+  notes        String?   @db.Text
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  // Relasi
+  business       Business        @relation(fields: [businessId], references: [id])
+  user           User?           @relation(fields: [userId], references: [id])
+  salaryPayments SalaryPayment[]
+  deductions     EmployeeDeduction[]
+
+  @@unique([businessId, code])
+  @@map("employees")
+}
+
+// ============================================================
+// TABEL: salary_payments
+// Riwayat transaksi pembayaran gaji staf & slip gaji (terintegrasi jurnal akuntansi)
+// ============================================================
+model SalaryPayment {
+  id             Int           @id @default(autoincrement())
+  businessId     Int           @map("business_id")
+  employeeId     Int           @map("employee_id")
+  paymentNumber  String        @unique @map("payment_number") @db.VarChar(50)
+  periodStart    DateTime      @map("period_start")
+  periodEnd      DateTime      @map("period_end")
+  paymentDate    DateTime      @default(now()) @map("payment_date")
+  baseSalary     Decimal       @map("base_salary") @db.Decimal(15, 2)
+  allowance      Decimal       @default(0) @map("allowance") @db.Decimal(15, 2)
+  bonus          Decimal       @default(0) @map("bonus") @db.Decimal(15, 2)
+  deductions     Decimal       @default(0) @map("deductions") @db.Decimal(15, 2)
+  netSalary      Decimal       @map("net_salary") @db.Decimal(15, 2)
+  paymentMethod  PaymentMethod @default(TUNAI) @map("payment_method")
+  accountId      Int           @map("account_id")
+  journalEntryId Int?          @unique @map("journal_entry_id")
+  notes          String?       @db.Text
+  createdById    Int           @map("created_by_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+
+  // Relasi
+  business          Business                     @relation(fields: [businessId], references: [id])
+  employee          Employee                     @relation(fields: [employeeId], references: [id])
+  account           Account                      @relation(fields: [accountId], references: [id])
+  journalEntry      JournalEntry?                @relation(fields: [journalEntryId], references: [id])
+  createdBy         User                         @relation("SalaryPaymentCreatedBy", fields: [createdById], references: [id])
+  settledDeductions EmployeeDeduction[]
+  deductionItems    SalaryPaymentDeductionItem[]
+
+  @@map("salary_payments")
+}
+
+// ============================================================
+// TABEL: employee_deductions
+// Catatan kasbon dan potongan staf
+// ============================================================
+model EmployeeDeduction {
+  id              Int            @id @default(autoincrement())
+  businessId      Int            @map("business_id")
+  employeeId      Int            @map("employee_id")
+  salaryPaymentId Int?           @map("salary_payment_id")
+  amount          Decimal        @db.Decimal(15, 2)
+  paidAmount      Decimal        @default(0) @map("paid_amount") @db.Decimal(15, 2)
+  remainingAmount Decimal        @default(0) @map("remaining_amount") @db.Decimal(15, 2)
+  type            String         @default("KASBON") @db.VarChar(30)
+  date            DateTime       @default(now())
+  notes           String?        @db.Text
+  status          String         @default("PENDING") @db.VarChar(20)
+  createdById     Int            @map("created_by_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  deletedAt       DateTime?      @map("deleted_at")
+
+  // Relasi
+  business      Business                     @relation(fields: [businessId], references: [id])
+  employee      Employee                     @relation(fields: [employeeId], references: [id])
+  salaryPayment SalaryPayment?               @relation(fields: [salaryPaymentId], references: [id])
+  createdBy     User                         @relation("DeductionCreatedBy", fields: [createdById], references: [id])
+  paymentItems  SalaryPaymentDeductionItem[]
+
+  @@map("employee_deductions")
+}
+
+// ============================================================
+// TABEL: salary_payment_deduction_items
+// Rincian pemotongan kasbon per transaksi pembayaran gaji (Audit Trail & Rollback)
+// ============================================================
+model SalaryPaymentDeductionItem {
+  id              Int               @id @default(autoincrement())
+  salaryPaymentId Int               @map("salary_payment_id")
+  deductionId     Int               @map("deduction_id")
+  amountApplied   Decimal           @map("amount_applied") @db.Decimal(15, 2)
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  // Relasi
+  salaryPayment   SalaryPayment     @relation(fields: [salaryPaymentId], references: [id], onDelete: Cascade)
+  deduction       EmployeeDeduction @relation(fields: [deductionId], references: [id], onDelete: Cascade)
+
+  @@map("salary_payment_deduction_items")
+}
