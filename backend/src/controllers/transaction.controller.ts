@@ -66,6 +66,29 @@ export class TransactionController {
   }
 
   /**
+   * PUT /api/transactions/:id
+   * Perbarui catatan atau metode pembayaran struk
+   */
+  static async update(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const businessId = req.businessId;
+      if (!businessId || !req.user) {
+        sendError(res, 'Autentikasi dan unit usaha diperlukan.', 401);
+        return;
+      }
+      const id = parseInt(String(req.params.id), 10);
+      if (isNaN(id)) {
+        sendError(res, 'ID transaksi tidak valid.', 400);
+        return;
+      }
+      const result = await TransactionService.update(id, businessId, req.body);
+      sendSuccess(res, result, 'Data transaksi struk berhasil diperbarui');
+    } catch (error: any) {
+      sendError(res, error.message || 'Gagal memperbarui transaksi', 400);
+    }
+  }
+
+  /**
    * GET /api/transactions
    * Daftar riwayat transaksi
    */

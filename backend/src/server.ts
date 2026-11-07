@@ -18,6 +18,8 @@ import reportRoutes from './routes/report.routes.js';
 import backupRoutes from './routes/backup.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
 import salaryRoutes from './routes/salary.routes.js';
+import shiftRoutes from './routes/shift.routes.js';
+import attendanceRoutes from './routes/attendance.routes.js';
 
 const app = express();
 
@@ -63,6 +65,8 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/salaries', salaryRoutes);
+app.use('/api/shifts', shiftRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // ============================================================
 // SERVE FRONTEND STATIC BUILD (PRODUCTION / ALL-IN-ONE)

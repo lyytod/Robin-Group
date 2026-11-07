@@ -10,6 +10,7 @@ router.use(authenticate);
 router.use(requireBusinessAccess);
 
 router.get('/stock-movements', ProductController.getMovements);
+router.get('/categories', ProductController.getCategories);
 router.get('/', ProductController.getAll);
 router.get('/:id', ProductController.getById);
 

@@ -15,12 +15,85 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   RefreshCw,
+  ShoppingCart,
+  Receipt,
+  UtensilsCrossed,
+  Eye,
+  Search,
+  X,
+  CreditCard,
 } from 'lucide-react';
 import apiClient from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { formatRupiah, formatTanggal, formatTanggalJam } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import type { ApiResponse } from '../../types/index';
+
+interface SalesReportReceiptItem {
+  id: number;
+  productId: number | null;
+  productCode: string;
+  itemName: string;
+  category: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
+interface SalesReportReceipt {
+  id: number;
+  nomorBukti: string;
+  transactionDate: string;
+  businessId: number;
+  businessName: string;
+  businessCode: string;
+  totalAmount: number;
+  discountAmount: number;
+  taxAmount: number;
+  grandTotal: number;
+  paymentMethod: string;
+  cashPaid: number | null;
+  changeAmount: number | null;
+  notes: string | null;
+  isVoided: boolean;
+  voidedAt: string | null;
+  voidReason: string | null;
+  cashier: string;
+  itemCount: number;
+  items: SalesReportReceiptItem[];
+}
+
+interface ProductSalesItem {
+  productId: number | null;
+  productCode: string;
+  productName: string;
+  category: string;
+  unit: string;
+  totalQty: number;
+  totalRevenue: number;
+  transactionCount: number;
+  averagePrice: number;
+  contributionPercentage: number;
+}
+
+interface SalesReportData {
+  businessName: string;
+  isConsolidated: boolean;
+  period: { startDate: string | null; endDate: string | null };
+  summary: {
+    totalRevenue: number;
+    totalTransactions: number;
+    totalItemsSold: number;
+    totalDiscounts: number;
+    totalTax: number;
+    averageTransaction: number;
+    voidCount: number;
+    voidAmount: number;
+    paymentMethods: Record<string, { count: number; total: number }>;
+  };
+  productSales: ProductSalesItem[];
+  receipts: SalesReportReceipt[];
+}
 
 interface IncomeStatementData {
   businessName: string;
@@ -127,7 +200,10 @@ export function ReportsPage() {
   const queryClient = useQueryClient();
   const { user, activeBusiness, businesses } = useAuthStore();
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
-  const [activeTab, setActiveTab] = useState<'income' | 'balance' | 'cashflow' | 'backup'>('income');
+  const [activeTab, setActiveTab] = useState<'sales' | 'income' | 'balance' | 'cashflow' | 'backup'>('sales');
+  const [salesSubTab, setSalesSubTab] = useState<'receipts' | 'products'>('receipts');
+  const [salesSearch, setSalesSearch] = useState('');
+  const [selectedReceipt, setSelectedReceipt] = useState<SalesReportReceipt | null>(null);
 
   // Query daftar seluruh unit usaha aktif untuk selector
   const { data: businessList } = useQuery({
@@ -154,6 +230,60 @@ export function ReportsPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [asOfDate, setAsOfDate] = useState('');
+
+  // Date range presets helper
+  const setDatePreset = (preset: 'today' | 'yesterday' | '7days' | 'thisMonth' | 'all') => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const toYMD = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    if (preset === 'today') {
+      const todayStr = toYMD(now);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === 'yesterday') {
+      const yest = new Date(now);
+      yest.setDate(now.getDate() - 1);
+      const yestStr = toYMD(yest);
+      setStartDate(yestStr);
+      setEndDate(yestStr);
+    } else if (preset === '7days') {
+      const past = new Date(now);
+      past.setDate(now.getDate() - 6);
+      setStartDate(toYMD(past));
+      setEndDate(toYMD(now));
+    } else if (preset === 'thisMonth') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(toYMD(firstDay));
+      setEndDate(toYMD(now));
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
+
+  // Sales Report Query
+  const { data: salesData, isLoading: isLoadingSales } = useQuery({
+    queryKey: ['sales-report', selectedScope, startDate, endDate],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (isConsolidated) {
+        params.append('consolidated', 'true');
+      } else {
+        params.append('businessId', selectedScope);
+      }
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+      const res = await apiClient.get<ApiResponse<SalesReportData>>(
+        `/reports/sales?${params.toString()}`,
+        {
+          headers: isConsolidated ? { 'x-consolidated': 'true' } : { 'x-business-id': selectedScope },
+        }
+      );
+      return res.data.data;
+    },
+    enabled: activeTab === 'sales',
+  });
 
   // Income Statement Query
   const { data: incomeData, isLoading: isLoadingIncome } = useQuery({
@@ -248,11 +378,10 @@ export function ReportsPage() {
     },
   });
 
-  const handleExportExcel = async (type: 'INCOME_STATEMENT' | 'BALANCE_SHEET') => {
+  const handleExportExcel = async (type: 'INCOME_STATEMENT' | 'BALANCE_SHEET' | 'SALES') => {
     try {
       toast.loading('Menyiapkan file Excel...', { id: 'excel' });
       const params = new URLSearchParams();
-      params.append('type', type);
       if (isConsolidated) {
         params.append('consolidated', 'true');
       } else {
@@ -262,14 +391,22 @@ export function ReportsPage() {
       if (endDate) params.append('endDate', endDate);
       if (asOfDate) params.append('asOfDate', asOfDate);
 
-      const response = await apiClient.get(`/reports/export/excel?${params.toString()}`, {
+      let url = '';
+      if (type === 'SALES') {
+        url = `/reports/export/sales-excel?${params.toString()}`;
+      } else {
+        params.append('type', type);
+        url = `/reports/export/excel?${params.toString()}`;
+      }
+
+      const response = await apiClient.get(url, {
         responseType: 'blob',
         headers: isConsolidated ? { 'x-consolidated': 'true' } : { 'x-business-id': selectedScope }
       });
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
-      link.href = url;
+      link.href = blobUrl;
       link.setAttribute('download', `Laporan_${type}_${new Date().toISOString().split('T')[0]}.xlsx`);
       document.body.appendChild(link);
       link.click();
@@ -304,7 +441,13 @@ export function ReportsPage() {
             <>
               <button
                 onClick={() =>
-                  handleExportExcel(activeTab === 'balance' ? 'BALANCE_SHEET' : 'INCOME_STATEMENT')
+                  handleExportExcel(
+                    activeTab === 'sales'
+                      ? 'SALES'
+                      : activeTab === 'balance'
+                      ? 'BALANCE_SHEET'
+                      : 'INCOME_STATEMENT'
+                  )
                 }
                 className="btn-secondary text-sm flex items-center gap-1.5"
                 title="Ekspor ke spreadsheet Excel"
@@ -326,6 +469,7 @@ export function ReportsPage() {
       {/* Navigation Tabs */}
       <div className="flex flex-wrap border-b border-surface-200 gap-6">
         {[
+          { id: 'sales', name: 'Laporan Penjualan', icon: ShoppingCart },
           { id: 'income', name: 'Laba Rugi (P&L)', icon: TrendingUp },
           { id: 'balance', name: 'Neraca (Balance Sheet)', icon: Layers },
           { id: 'cashflow', name: 'Arus Kas (Cash Flow)', icon: ArrowUpRight },
@@ -389,7 +533,47 @@ export function ReportsPage() {
           </div>
 
           {/* Date Filter Inputs */}
-          <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            {activeTab !== 'balance' && (
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0">
+                <button
+                  type="button"
+                  onClick={() => setDatePreset('today')}
+                  className="px-2 py-1 text-[11px] font-medium rounded bg-surface-100 hover:bg-surface-200 text-surface-700 whitespace-nowrap"
+                >
+                  Hari Ini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDatePreset('yesterday')}
+                  className="px-2 py-1 text-[11px] font-medium rounded bg-surface-100 hover:bg-surface-200 text-surface-700 whitespace-nowrap"
+                >
+                  Kemarin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDatePreset('7days')}
+                  className="px-2 py-1 text-[11px] font-medium rounded bg-surface-100 hover:bg-surface-200 text-surface-700 whitespace-nowrap"
+                >
+                  7 Hari
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDatePreset('thisMonth')}
+                  className="px-2 py-1 text-[11px] font-medium rounded bg-surface-100 hover:bg-surface-200 text-surface-700 whitespace-nowrap"
+                >
+                  Bulan Ini
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDatePreset('all')}
+                  className="px-2 py-1 text-[11px] font-medium rounded bg-surface-100 hover:bg-surface-200 text-surface-700 whitespace-nowrap"
+                >
+                  Semua
+                </button>
+              </div>
+            )}
+
             {activeTab !== 'balance' ? (
               <>
                 <div className="flex items-center gap-1 text-xs text-surface-500">
@@ -424,6 +608,493 @@ export function ReportsPage() {
                 />
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 0: LAPORAN PENJUALAN (HISTORY PER-STRUK & MENU LAKU) */}
+      {activeTab === 'sales' && (
+        <div className="space-y-6">
+          {isLoadingSales ? (
+            <div className="card p-12 text-center text-surface-400">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-primary-600" />
+              Menghitung data transaksi penjualan kasir...
+            </div>
+          ) : salesData ? (
+            <div className="space-y-6">
+              {/* Header Box */}
+              <div className="card p-6 text-center border-b border-surface-200">
+                <div className="flex justify-center mb-1.5">
+                  {salesData.isConsolidated ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-primary-50 text-primary-700 border border-primary-200 flex items-center gap-1">
+                      <Building2 className="w-3.5 h-3.5" />
+                      LAPORAN KONSOLIDASI PENJUALAN SELURUH USAHA
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-surface-100 text-surface-700 border border-surface-200">
+                      UNIT USAHA: {salesData.businessName}
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-xl font-bold text-surface-900 uppercase">
+                  {salesData.businessName}
+                </h2>
+                <h3 className="text-base font-semibold text-primary-600 mt-0.5">
+                  Laporan Penjualan & Analisis Menu Laku
+                </h3>
+                <p className="text-xs text-surface-500 mt-1">
+                  Periode:{' '}
+                  {salesData.period.startDate ? formatTanggal(salesData.period.startDate) : 'Awal Penjualan'}{' '}
+                  s/d{' '}
+                  {salesData.period.endDate ? formatTanggal(salesData.period.endDate) : 'Saat Ini'}
+                </p>
+              </div>
+
+              {/* KPI Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="card p-5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-surface-500 font-medium">Total Omset Penjualan</p>
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <TrendingUp className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-bold font-mono text-emerald-600 mt-2">
+                    {formatRupiah(salesData.summary.totalRevenue)}
+                  </p>
+                  <p className="text-[11px] text-surface-400 mt-1">
+                    Dari {salesData.summary.totalTransactions} transaksi berhasil
+                  </p>
+                </div>
+
+                <div className="card p-5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-surface-500 font-medium">Total Struk Transaksi</p>
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                      <Receipt className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-bold text-surface-900 mt-2">
+                    {salesData.summary.totalTransactions} Struk
+                  </p>
+                  <p className="text-[11px] text-surface-400 mt-1">
+                    {salesData.summary.voidCount > 0 ? (
+                      <span className="text-rose-500">
+                        {salesData.summary.voidCount} dibatalkan (void)
+                      </span>
+                    ) : (
+                      'Semua transaksi valid'
+                    )}
+                  </p>
+                </div>
+
+                <div className="card p-5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-surface-500 font-medium">Menu Terjual (Kuantitas)</p>
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                      <UtensilsCrossed className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-bold text-surface-900 mt-2">
+                    {salesData.summary.totalItemsSold} Item
+                  </p>
+                  <p className="text-[11px] text-surface-400 mt-1">
+                    {salesData.productSales.length} varian menu laku terjual
+                  </p>
+                </div>
+
+                <div className="card p-5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-surface-500 font-medium">Rata-rata Nilai Struk</p>
+                    <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+                      <ShoppingCart className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-2xl font-bold font-mono text-purple-700 mt-2">
+                    {formatRupiah(salesData.summary.averageTransaction)}
+                  </p>
+                  <p className="text-[11px] text-surface-400 mt-1">Basket size per pelanggan</p>
+                </div>
+              </div>
+
+              {/* Payment Methods Breakdown Cards */}
+              <div className="card p-4">
+                <p className="text-xs font-semibold text-surface-500 mb-2.5 flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5" /> Pembayaran Berdasarkan Metode:
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  {Object.entries(salesData.summary.paymentMethods).map(([method, val]) => (
+                    <div key={method} className="p-3 rounded-lg bg-surface-50 border border-surface-200/60">
+                      <span className="font-semibold text-surface-700">{method}</span>
+                      <p className="text-sm font-bold font-mono text-surface-900 mt-1">
+                        {formatRupiah(val.total)}
+                      </p>
+                      <p className="text-[11px] text-surface-400 mt-0.5">{val.count} transaksi</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sub-view Selector (Tabs) */}
+              <div className="flex border-b border-surface-200 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setSalesSubTab('receipts')}
+                  className={`pb-2.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all ${
+                    salesSubTab === 'receipts'
+                      ? 'border-primary-600 text-primary-600'
+                      : 'border-transparent text-surface-500 hover:text-surface-800'
+                  }`}
+                >
+                  <Receipt className="w-4 h-4" />
+                  History Penjualan Per-Struk ({salesData.receipts.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSalesSubTab('products')}
+                  className={`pb-2.5 text-xs font-bold flex items-center gap-2 border-b-2 transition-all ${
+                    salesSubTab === 'products'
+                      ? 'border-primary-600 text-primary-600'
+                      : 'border-transparent text-surface-500 hover:text-surface-800'
+                  }`}
+                >
+                  <UtensilsCrossed className="w-4 h-4" />
+                  Rekapitulasi Menu Terjual / Menu Laku ({salesData.productSales.length})
+                </button>
+              </div>
+
+              {/* SUB-VIEW 1: HISTORY STRUK PENJUALAN */}
+              {salesSubTab === 'receipts' && (
+                <div className="space-y-4">
+                  {/* Search Bar */}
+                  <div className="card p-3">
+                    <div className="relative w-full">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                      <input
+                        type="text"
+                        value={salesSearch}
+                        onChange={(e) => setSalesSearch(e.target.value)}
+                        placeholder="Cari berdasarkan No. Struk (TRX-...), kasir, atau catatan transaksi..."
+                        className="input pl-9 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Table Receipts */}
+                  <div className="card overflow-hidden">
+                    <div className="table-container">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th>No. Struk</th>
+                            <th>Waktu Transaksi</th>
+                            {salesData.isConsolidated && <th>Unit Usaha</th>}
+                            <th>Kasir</th>
+                            <th>Metode Bayar</th>
+                            <th className="text-center">Jml Item</th>
+                            <th className="text-right">Total Tagihan</th>
+                            <th className="text-center">Status</th>
+                            <th className="text-right">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {salesData.receipts
+                            .filter((r) => {
+                              if (!salesSearch) return true;
+                              const s = salesSearch.toLowerCase();
+                              return (
+                                r.nomorBukti.toLowerCase().includes(s) ||
+                                r.cashier.toLowerCase().includes(s) ||
+                                (r.notes && r.notes.toLowerCase().includes(s))
+                              );
+                            })
+                            .map((r) => (
+                              <tr key={r.id} className="hover:bg-surface-50/80 transition-colors">
+                                <td>
+                                  <span className="font-mono text-xs font-bold text-surface-900">
+                                    {r.nomorBukti}
+                                  </span>
+                                </td>
+                                <td className="text-xs text-surface-600 whitespace-nowrap">
+                                  {formatTanggalJam(r.transactionDate)}
+                                </td>
+                                {salesData.isConsolidated && (
+                                  <td className="text-xs text-surface-700 font-medium">
+                                    {r.businessName}
+                                  </td>
+                                )}
+                                <td className="text-xs text-surface-700">{r.cashier}</td>
+                                <td>
+                                  <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-surface-100 text-surface-700 border border-surface-200">
+                                    {r.paymentMethod}
+                                  </span>
+                                </td>
+                                <td className="text-center text-xs text-surface-600 font-medium">
+                                  {r.itemCount} item
+                                </td>
+                                <td className="text-right text-xs font-mono font-bold text-surface-900">
+                                  {formatRupiah(r.grandTotal)}
+                                </td>
+                                <td className="text-center">
+                                  {r.isVoided ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                      DIBATALKAN
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                      SELESAI
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedReceipt(r)}
+                                    className="p-1.5 text-primary-600 hover:text-primary-800 hover:bg-primary-50 rounded-lg transition-colors text-xs font-medium inline-flex items-center gap-1"
+                                    title="Lihat Detail Struk"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" /> Rincian
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* SUB-VIEW 2: REKAPITULASI MENU TERJUAL */}
+              {salesSubTab === 'products' && (
+                <div className="card overflow-hidden">
+                  <div className="p-4 border-b border-surface-200 flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-surface-900 text-sm">
+                        Katalog Menu yang Laku Terjual pada Periode Terpilih
+                      </h4>
+                      <p className="text-xs text-surface-500 mt-0.5">
+                        Daftar produk diurutkan berdasarkan kuantitas terbanyak yang dipesan kasir
+                      </p>
+                    </div>
+                  </div>
+                  <div className="table-container">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th className="text-center w-14">Rank</th>
+                          <th>Menu & Kode</th>
+                          <th>Tipe Menu</th>
+                          <th className="text-center">Terjual (Qty)</th>
+                          <th className="text-right">Harga Rata-rata</th>
+                          <th className="text-right">Total Pendapatan (Omset)</th>
+                          <th className="w-48">Kontribusi Omset</th>
+                          <th className="text-center">Muncul di Struk</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {salesData.productSales.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="text-center py-12 text-surface-400 text-xs">
+                              Tidak ada menu yang terjual pada rentang waktu ini.
+                            </td>
+                          </tr>
+                        ) : (
+                          salesData.productSales.map((item, idx) => (
+                            <tr key={item.productId ?? item.productName} className="hover:bg-surface-50/80 transition-colors">
+                              <td className="text-center font-bold text-xs">
+                                {idx === 0 && (
+                                  <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 inline-flex items-center justify-center text-xs shadow-2xs">
+                                    🥇
+                                  </span>
+                                )}
+                                {idx === 1 && (
+                                  <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 inline-flex items-center justify-center text-xs">
+                                    🥈
+                                  </span>
+                                )}
+                                {idx === 2 && (
+                                  <span className="w-6 h-6 rounded-full bg-orange-100 text-orange-700 inline-flex items-center justify-center text-xs">
+                                    🥉
+                                  </span>
+                                )}
+                                {idx > 2 && (
+                                  <span className="text-surface-500">#{idx + 1}</span>
+                                )}
+                              </td>
+                              <td>
+                                <div>
+                                  <p className="font-semibold text-surface-900 text-sm">
+                                    {item.productName}
+                                  </p>
+                                  <p className="text-xs text-surface-400 font-mono">
+                                    {item.productCode}
+                                  </p>
+                                </div>
+                              </td>
+                              <td>
+                                <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-primary-50 text-primary-700 border border-primary-200/60">
+                                  {item.category}
+                                </span>
+                              </td>
+                              <td className="text-center font-bold text-sm font-mono text-surface-900">
+                                {item.totalQty} <span className="text-xs text-surface-500 font-normal">{item.unit}</span>
+                              </td>
+                              <td className="text-right text-xs font-mono text-surface-600">
+                                {formatRupiah(item.averagePrice)}
+                              </td>
+                              <td className="text-right text-sm font-bold font-mono text-emerald-600">
+                                {formatRupiah(item.totalRevenue)}
+                              </td>
+                              <td>
+                                <div className="space-y-1">
+                                  <div className="flex justify-between text-[11px] text-surface-600">
+                                    <span>{item.contributionPercentage}%</span>
+                                  </div>
+                                  <div className="w-full bg-surface-100 h-2 rounded-full overflow-hidden">
+                                    <div
+                                      className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                                      style={{ width: `${Math.min(100, item.contributionPercentage)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="text-center text-xs text-surface-600">
+                                {item.transactionCount} transaksi
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="card p-8 text-center text-surface-500 text-sm">
+              Tidak ada data penjualan untuk kriteria filter ini.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MODAL DETAIL STRUK */}
+      {selectedReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="card w-full max-w-md shadow-2xl overflow-hidden animate-scale-up">
+            <div className="p-4 border-b border-surface-200 flex items-center justify-between bg-surface-50">
+              <h3 className="font-bold text-surface-900 text-sm flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-primary-600" />
+                Detail Struk #{selectedReceipt.nomorBukti}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedReceipt(null)}
+                className="text-surface-400 hover:text-surface-700 p-1 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs font-mono max-h-[70vh] overflow-y-auto">
+              {/* Receipt Info */}
+              <div className="space-y-1 pb-3 border-b border-surface-200">
+                <div className="flex justify-between">
+                  <span className="text-surface-500">Unit Usaha:</span>
+                  <span className="font-bold text-surface-900">{selectedReceipt.businessName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-500">Waktu:</span>
+                  <span>{formatTanggalJam(selectedReceipt.transactionDate)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-500">Kasir:</span>
+                  <span>{selectedReceipt.cashier}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-500">Metode Bayar:</span>
+                  <span className="font-bold text-primary-700">{selectedReceipt.paymentMethod}</span>
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-2 pb-3 border-b border-dashed border-surface-200">
+                <p className="text-[11px] font-bold text-surface-500 uppercase tracking-wider">
+                  Daftar Pesanan Menu:
+                </p>
+                {selectedReceipt.items.map((it) => (
+                  <div key={it.id} className="flex justify-between py-0.5">
+                    <div>
+                      <p className="font-semibold text-surface-900">{it.itemName}</p>
+                      <p className="text-[10px] text-surface-400">
+                        {it.quantity} x {formatRupiah(it.unitPrice)}
+                      </p>
+                    </div>
+                    <span className="font-bold text-surface-900">{formatRupiah(it.subtotal)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Totals */}
+              <div className="space-y-1 pb-3 border-b border-surface-200">
+                <div className="flex justify-between text-surface-600">
+                  <span>Subtotal:</span>
+                  <span>{formatRupiah(selectedReceipt.totalAmount)}</span>
+                </div>
+                {selectedReceipt.discountAmount > 0 && (
+                  <div className="flex justify-between text-rose-600">
+                    <span>Diskon:</span>
+                    <span>-{formatRupiah(selectedReceipt.discountAmount)}</span>
+                  </div>
+                )}
+                {selectedReceipt.taxAmount > 0 && (
+                  <div className="flex justify-between text-surface-600">
+                    <span>Pajak:</span>
+                    <span>+{formatRupiah(selectedReceipt.taxAmount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-bold text-surface-900 pt-1">
+                  <span>TOTAL TAGIHAN:</span>
+                  <span className="text-emerald-600">{formatRupiah(selectedReceipt.grandTotal)}</span>
+                </div>
+                {selectedReceipt.cashPaid !== null && (
+                  <>
+                    <div className="flex justify-between text-surface-600 pt-1">
+                      <span>Tunai Diterima:</span>
+                      <span>{formatRupiah(selectedReceipt.cashPaid)}</span>
+                    </div>
+                    <div className="flex justify-between text-surface-600">
+                      <span>Kembalian:</span>
+                      <span>{formatRupiah(selectedReceipt.changeAmount || 0)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {selectedReceipt.notes && (
+                <div className="p-2.5 bg-surface-50 rounded-lg text-surface-600">
+                  <span className="font-bold text-surface-500">Catatan:</span> {selectedReceipt.notes}
+                </div>
+              )}
+
+              {selectedReceipt.isVoided && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-700">
+                  <p className="font-bold">STATUS TRANSAKSI: DIBATALKAN</p>
+                  <p className="text-[11px] mt-0.5">Alasan: {selectedReceipt.voidReason || '-'}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-surface-50 border-t border-surface-200 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedReceipt(null)}
+                className="btn-secondary text-xs px-4"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

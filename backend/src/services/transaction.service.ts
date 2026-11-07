@@ -398,6 +398,7 @@ export class TransactionService {
       });
 
       return {
+        id: transaction.id,
         transactionId: transaction.id,
         nomorBukti: transaction.nomorBukti,
         grandTotal: Number(transaction.grandTotal),
@@ -505,6 +506,7 @@ export class TransactionService {
       });
 
       return {
+        id: transaction.id,
         transactionId: transaction.id,
         nomorBukti: transaction.nomorBukti,
         expenseAccountName: expenseAccount.name,
@@ -638,6 +640,80 @@ export class TransactionService {
         voidedAt: updatedTrx.voidedAt,
         voidReason: updatedTrx.voidReason,
         message: 'Transaksi berhasil dibatalkan dan jurnal pembalik telah dicatat.',
+      };
+    });
+  }
+
+  /**
+   * 3B. UPDATE TRANSAKSI STRUK (Catatan dan/atau Metode Pembayaran)
+   */
+  static async update(
+    id: number,
+    businessId: number,
+    data: { notes?: string; paymentMethod?: PaymentMethod }
+  ) {
+    const trx = await prisma.transaction.findFirst({
+      where: { id, businessId },
+      include: {
+        journalEntry: {
+          include: { items: true },
+        },
+      },
+    });
+
+    if (!trx) {
+      throw new Error('Transaksi tidak ditemukan.');
+    }
+
+    if (trx.voidedAt) {
+      throw new Error('Transaksi yang telah dibatalkan (void) tidak dapat diperbarui.');
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      const updateData: any = {};
+      if (data.notes !== undefined) {
+        updateData.notes = data.notes?.trim() || null;
+      }
+
+      if (data.paymentMethod && data.paymentMethod !== trx.paymentMethod) {
+        updateData.paymentMethod = data.paymentMethod;
+
+        if (trx.journalEntry) {
+          const oldAccountCode = trx.paymentMethod === PaymentMethod.TUNAI ? '1-1001' : '1-1003';
+          const newAccountCode = data.paymentMethod === PaymentMethod.TUNAI ? '1-1001' : '1-1003';
+
+          if (oldAccountCode !== newAccountCode) {
+            const newAccount = await this.getAccountByCode(businessId, newAccountCode, tx);
+            const debitLine = trx.journalEntry.items.find((item) => item.isDebit);
+            if (debitLine) {
+              await tx.journalItem.update({
+                where: { id: debitLine.id },
+                data: {
+                  accountId: newAccount.id,
+                  description: `Penerimaan via ${data.paymentMethod} (No: ${trx.nomorBukti})`,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      const updated = await tx.transaction.update({
+        where: { id },
+        data: updateData,
+        include: {
+          createdBy: { select: { id: true, fullName: true, username: true } },
+          items: true,
+        },
+      });
+
+      return {
+        id: updated.id,
+        nomorBukti: updated.nomorBukti,
+        paymentMethod: updated.paymentMethod,
+        notes: updated.notes,
+        grandTotal: Number(updated.grandTotal),
+        message: 'Transaksi struk berhasil diperbarui.',
       };
     });
   }

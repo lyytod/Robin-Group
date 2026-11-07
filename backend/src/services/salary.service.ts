@@ -15,6 +15,7 @@ export interface CreateEmployeeInput {
   bankName?: string;
   bankAccount?: string;
   joinDate?: string;
+  monthlyDayOffQuota?: number;
   notes?: string;
 }
 
@@ -30,6 +31,7 @@ export interface UpdateEmployeeInput {
   bankName?: string;
   bankAccount?: string;
   joinDate?: string;
+  monthlyDayOffQuota?: number;
   isActive?: boolean;
   notes?: string;
 }
@@ -46,6 +48,19 @@ export interface CreateSalaryPaymentInput {
   allowance?: number;
   bonus?: number;
   deductions?: number;
+  attendanceDays?: number;
+  onTimeDays?: number;
+  lateDays?: number;
+  lateMinutes?: number;
+  alfaDays?: number;
+  izinDays?: number;
+  sakitDays?: number;
+  liburDays?: number;
+  cutiDays?: number;
+  disciplineBonus?: number;
+  lateDeduction?: number;
+  mealAllowance?: number;
+  absenceDeduction?: number;
   paymentMethod: PaymentMethod;
   accountId: number;
   notes?: string;
@@ -198,6 +213,7 @@ export class SalaryService {
         bankName: emp.bankName,
         bankAccount: emp.bankAccount,
         joinDate: emp.joinDate,
+        monthlyDayOffQuota: emp.monthlyDayOffQuota,
         isActive: emp.isActive,
         notes: emp.notes,
         createdAt: emp.createdAt,
@@ -249,6 +265,7 @@ export class SalaryService {
       bankName: emp.bankName,
       bankAccount: emp.bankAccount,
       joinDate: emp.joinDate,
+      monthlyDayOffQuota: emp.monthlyDayOffQuota,
       isActive: emp.isActive,
       notes: emp.notes,
       user: emp.user,
@@ -289,6 +306,7 @@ export class SalaryService {
         bankName: data.bankName?.trim() || null,
         bankAccount: data.bankAccount?.trim() || null,
         joinDate: data.joinDate ? resolveLocalDateTime(data.joinDate) : new Date(),
+        monthlyDayOffQuota: data.monthlyDayOffQuota !== undefined ? Number(data.monthlyDayOffQuota) : 4,
         notes: data.notes?.trim() || null,
       },
       include: {
@@ -326,6 +344,7 @@ export class SalaryService {
     if (data.bankName !== undefined) updateData.bankName = data.bankName?.trim() || null;
     if (data.bankAccount !== undefined) updateData.bankAccount = data.bankAccount?.trim() || null;
     if (data.joinDate) updateData.joinDate = resolveLocalDateTime(data.joinDate);
+    if (data.monthlyDayOffQuota !== undefined) updateData.monthlyDayOffQuota = Number(data.monthlyDayOffQuota);
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
     if (data.notes !== undefined) updateData.notes = data.notes?.trim() || null;
     if (data.userId !== undefined) updateData.user = data.userId ? { connect: { id: data.userId } } : { disconnect: true };
@@ -432,6 +451,19 @@ export class SalaryService {
         allowance: Number(p.allowance),
         bonus: Number(p.bonus),
         deductions: Number(p.deductions),
+        attendanceDays: p.attendanceDays,
+        onTimeDays: p.onTimeDays,
+        lateDays: p.lateDays,
+        lateMinutes: p.lateMinutes,
+        alfaDays: p.alfaDays,
+        izinDays: p.izinDays,
+        sakitDays: p.sakitDays,
+        liburDays: p.liburDays,
+        cutiDays: p.cutiDays,
+        disciplineBonus: Number(p.disciplineBonus),
+        lateDeduction: Number(p.lateDeduction),
+        mealAllowance: Number(p.mealAllowance ?? 0),
+        absenceDeduction: Number(p.absenceDeduction ?? 0),
         netSalary: Number(p.netSalary),
         paymentMethod: p.paymentMethod,
         account: p.account,
@@ -523,6 +555,19 @@ export class SalaryService {
       allowance: Number(payment.allowance),
       bonus: Number(payment.bonus),
       deductions: Number(payment.deductions),
+      attendanceDays: payment.attendanceDays,
+      onTimeDays: payment.onTimeDays,
+      lateDays: payment.lateDays,
+      lateMinutes: payment.lateMinutes,
+      alfaDays: payment.alfaDays,
+      izinDays: payment.izinDays,
+      sakitDays: payment.sakitDays,
+      liburDays: payment.liburDays,
+      cutiDays: payment.cutiDays,
+      disciplineBonus: Number(payment.disciplineBonus),
+      lateDeduction: Number(payment.lateDeduction),
+      mealAllowance: Number(payment.mealAllowance ?? 0),
+      absenceDeduction: Number(payment.absenceDeduction ?? 0),
       netSalary: Number(payment.netSalary),
       paymentMethod: payment.paymentMethod,
       account: payment.account,
@@ -572,10 +617,20 @@ export class SalaryService {
   static async createPayment(data: CreateSalaryPaymentInput) {
     const baseSal = new Prisma.Decimal(data.baseSalary || 0);
     const allow = new Prisma.Decimal(data.allowance || 0);
+    const mealAllow = new Prisma.Decimal(data.mealAllowance || 0);
+    const discBon = new Prisma.Decimal(data.disciplineBonus || 0);
     const bon = new Prisma.Decimal(data.bonus || 0);
-    const ded = new Prisma.Decimal(data.deductions || 0);
 
-    const netSalary = baseSal.plus(allow).plus(bon).minus(ded);
+    const lateDed = new Prisma.Decimal(data.lateDeduction || 0);
+    const absDed = new Prisma.Decimal(data.absenceDeduction || 0);
+    const ded = new Prisma.Decimal(data.deductions || 0); // Murni Potongan Kasbon / Cicilan Pinjaman
+
+    // Total penerimaan kotor = Gaji Pokok + Tunjangan Tetap + Uang Makan Hadir + Bonus Disiplin + Bonus Tambahan
+    const totalIncome = baseSal.plus(allow).plus(mealAllow).plus(discBon).plus(bon);
+    // Total potongan = Denda Terlambat + Potongan Alfa + Potongan Kasbon
+    const totalDeductions = lateDed.plus(absDed).plus(ded);
+    const netSalary = totalIncome.minus(totalDeductions);
+
     if (netSalary.lessThanOrEqualTo(0)) {
       throw new Error('Total gaji bersih (Take Home Pay) harus lebih dari 0.');
     }
@@ -676,6 +731,19 @@ export class SalaryService {
           allowance: allow,
           bonus: bon,
           deductions: ded,
+          attendanceDays: data.attendanceDays || 0,
+          onTimeDays: data.onTimeDays || 0,
+          lateDays: data.lateDays || 0,
+          lateMinutes: data.lateMinutes || 0,
+          alfaDays: data.alfaDays || 0,
+          izinDays: data.izinDays || 0,
+          sakitDays: data.sakitDays || 0,
+          liburDays: data.liburDays || 0,
+          cutiDays: data.cutiDays || 0,
+          disciplineBonus: discBon,
+          lateDeduction: lateDed,
+          mealAllowance: mealAllow,
+          absenceDeduction: absDed,
           netSalary,
           paymentMethod: data.paymentMethod,
           accountId: payAccount.id,

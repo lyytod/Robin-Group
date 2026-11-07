@@ -15,6 +15,7 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
+  Boxes,
 } from 'lucide-react';
 import apiClient from '../../api/client';
 import { confirmDialog } from '../../store/confirmStore';
@@ -25,7 +26,7 @@ interface UserItem {
   id: number;
   username: string;
   fullName: string;
-  role: 'SUPER_ADMIN' | 'ADMIN' | 'KASIR';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'KASIR' | 'AGENT';
   isActive: boolean;
   createdAt: string;
   businesses: {
@@ -53,7 +54,7 @@ export function UserListPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState<'SUPER_ADMIN' | 'ADMIN' | 'KASIR'>('ADMIN');
+  const [role, setRole] = useState<'SUPER_ADMIN' | 'ADMIN' | 'KASIR' | 'AGENT'>('ADMIN');
   const [isActive, setIsActive] = useState(true);
   const [selectedBusinessIds, setSelectedBusinessIds] = useState<number[]>([]);
 
@@ -172,11 +173,11 @@ export function UserListPage() {
       return;
     }
 
-    // Validasi penugasan unit usaha untuk Admin dan Kasir
+    // Validasi penugasan unit usaha untuk Admin, Kasir, dan Agent
     if (role !== 'SUPER_ADMIN' && selectedBusinessIds.length === 0) {
       toast.error(
         `Silakan pilih minimal satu unit usaha yang dikelola oleh akun ${
-          role === 'ADMIN' ? 'Admin' : 'Kasir'
+          role === 'ADMIN' ? 'Admin' : role === 'AGENT' ? 'Agent' : 'Kasir'
         } ini.`
       );
       return;
@@ -222,6 +223,12 @@ export function UserListPage() {
             <Store className="w-3 h-3" /> Admin Usaha
           </span>
         );
+      case 'AGENT':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            <Boxes className="w-3 h-3 text-indigo-600" /> Agent (POS, Absen & Stok)
+          </span>
+        );
       default:
         return (
           <span className="badge-neutral inline-flex items-center gap-1">
@@ -236,6 +243,7 @@ export function UserListPage() {
   const superAdminCount = userData?.filter((u) => u.role === 'SUPER_ADMIN').length || 0;
   const adminCount = userData?.filter((u) => u.role === 'ADMIN').length || 0;
   const kasirCount = userData?.filter((u) => u.role === 'KASIR').length || 0;
+  const agentCount = userData?.filter((u) => u.role === 'AGENT').length || 0;
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
@@ -265,7 +273,7 @@ export function UserListPage() {
       </div>
 
       {/* KPI Highlights Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3.5">
         <div className="card p-4 bg-gradient-to-br from-white to-primary-50/40">
           <p className="text-xs font-semibold text-surface-500 uppercase">Total Akun</p>
           <p className="text-2xl font-bold font-mono text-surface-900 mt-1">{totalUsers}</p>
@@ -275,11 +283,11 @@ export function UserListPage() {
         <div className="card p-4">
           <p className="text-xs font-semibold text-surface-500 uppercase">Super Admin</p>
           <p className="text-2xl font-bold font-mono text-primary-700 mt-1">{superAdminCount}</p>
-          <p className="text-[11px] text-surface-400 mt-0.5">Akses penuh seluruh cabang</p>
+          <p className="text-[11px] text-surface-400 mt-0.5">Akses penuh cabang</p>
         </div>
 
         <div className="card p-4">
-          <p className="text-xs font-semibold text-surface-500 uppercase">Admin Usaha / Cabang</p>
+          <p className="text-xs font-semibold text-surface-500 uppercase">Admin Usaha</p>
           <p className="text-2xl font-bold font-mono text-amber-600 mt-1">{adminCount}</p>
           <p className="text-[11px] text-surface-400 mt-0.5">Pengelola unit tertentu</p>
         </div>
@@ -287,7 +295,13 @@ export function UserListPage() {
         <div className="card p-4">
           <p className="text-xs font-semibold text-surface-500 uppercase">Kasir Operasional</p>
           <p className="text-2xl font-bold font-mono text-emerald-600 mt-1">{kasirCount}</p>
-          <p className="text-[11px] text-surface-400 mt-0.5">Akses transaksi penjualan</p>
+          <p className="text-[11px] text-surface-400 mt-0.5">Akses transaksi POS</p>
+        </div>
+
+        <div className="card p-4">
+          <p className="text-xs font-semibold text-surface-500 uppercase">Agent (Stok & POS)</p>
+          <p className="text-2xl font-bold font-mono text-indigo-600 mt-1">{agentCount}</p>
+          <p className="text-[11px] text-surface-400 mt-0.5">POS, Absen & Kelola Stok</p>
         </div>
       </div>
 
@@ -309,12 +323,13 @@ export function UserListPage() {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="input text-xs sm:w-40"
+            className="input text-xs sm:w-44"
           >
             <option value="">Semua Peran</option>
             <option value="SUPER_ADMIN">Super Admin</option>
             <option value="ADMIN">Admin Usaha</option>
             <option value="KASIR">Kasir</option>
+            <option value="AGENT">Agent (POS, Absen & Stok)</option>
           </select>
 
           {/* Business Unit Filter */}
@@ -526,7 +541,8 @@ export function UserListPage() {
                     className="input font-medium"
                   >
                     <option value="ADMIN">Admin Usaha (Mengelola Cabang Tertentu)</option>
-                    <option value="KASIR">Kasir (Operasional Penjualan POS)</option>
+                    <option value="AGENT">Agent (Kasir, Absensi, & Kelola Stok Inventaris)</option>
+                    <option value="KASIR">Kasir (Operasional Penjualan POS & Absensi)</option>
                     <option value="SUPER_ADMIN">Super Admin (Akses Penuh Seluruh Cabang)</option>
                   </select>
                 </div>

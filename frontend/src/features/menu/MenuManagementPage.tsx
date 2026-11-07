@@ -22,6 +22,7 @@ interface ProductItem {
   id: number;
   code: string;
   name: string;
+  category: string | null;
   unit: string;
   sellingPrice: number;
   purchasePrice: number;
@@ -36,6 +37,7 @@ export function MenuManagementPage() {
   const queryClient = useQueryClient();
   const { activeBusiness } = useAuthStore();
   const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
   // Modals
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -44,17 +46,29 @@ export function MenuManagementPage() {
   // Form states for Product
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  const [category, setCategory] = useState('');
   const [unit, setUnit] = useState('PORSI');
   const [sellingPrice, setSellingPrice] = useState('');
   const [purchasePrice, setPurchasePrice] = useState('');
   const [description, setDescription] = useState('');
 
+  // Fetch unique categories
+  const { data: categoryList } = useQuery({
+    queryKey: ['product-categories', activeBusiness?.id],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<string[]>>('/products/categories');
+      return res.data.data ?? [];
+    },
+    enabled: !!activeBusiness?.id,
+  });
+
   // Fetch products
   const { data: products, isLoading } = useQuery({
-    queryKey: ['products', activeBusiness?.id, search],
+    queryKey: ['products', activeBusiness?.id, search, selectedCategory],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (search) params.append('search', search);
+      if (selectedCategory && selectedCategory !== 'ALL') params.append('category', selectedCategory);
       params.append('limit', '100');
       const res = await apiClient.get<ApiResponse<ProductItem[]>>(`/products?${params.toString()}`);
       return res.data.data ?? [];
@@ -73,6 +87,7 @@ export function MenuManagementPage() {
     setEditingProduct(null);
     setCode(`MN-${Math.floor(1000 + Math.random() * 9000)}`);
     setName('');
+    setCategory('');
     setUnit('PORSI');
     setSellingPrice('');
     setPurchasePrice('');
@@ -84,6 +99,7 @@ export function MenuManagementPage() {
     setEditingProduct(p);
     setCode(p.code);
     setName(p.name);
+    setCategory(p.category || '');
     setUnit(p.unit);
     setSellingPrice(p.sellingPrice.toString());
     setPurchasePrice(p.purchasePrice.toString());
@@ -101,6 +117,7 @@ export function MenuManagementPage() {
       toast.success(data.message || 'Menu berhasil ditambahkan!');
       setIsProductModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product-categories'] });
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || 'Gagal menambahkan menu.');
@@ -116,6 +133,7 @@ export function MenuManagementPage() {
       toast.success('Informasi menu berhasil diperbarui.');
       setIsProductModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['product-categories'] });
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || 'Gagal memperbarui menu.');
@@ -149,6 +167,7 @@ export function MenuManagementPage() {
         payload: {
           code: code.trim(),
           name: name.trim(),
+          category: category.trim() || undefined,
           unit: unit.trim(),
           sellingPrice: parseFloat(sellingPrice),
           purchasePrice: parseFloat(purchasePrice) || 0,
@@ -160,6 +179,7 @@ export function MenuManagementPage() {
       createMutation.mutate({
         code: code.trim(),
         name: name.trim(),
+        category: category.trim() || undefined,
         unit: unit.trim(),
         sellingPrice: parseFloat(sellingPrice),
         purchasePrice: parseFloat(purchasePrice) || 0,
@@ -227,17 +247,47 @@ export function MenuManagementPage() {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="card p-4">
+      {/* Filter Bar & Tipe Menu Tabs */}
+      <div className="card p-4 space-y-3">
         <div className="relative w-full">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-surface-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari berdasarkan nama menu, kode, atau kategori pesanan..."
+            placeholder="Cari berdasarkan nama menu, kode, atau tipe pesanan..."
             className="input pl-10 text-sm"
           />
+        </div>
+
+        {/* Category Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+          <span className="text-surface-400 font-medium whitespace-nowrap mr-1 flex items-center gap-1">
+            <Tag className="w-3.5 h-3.5" /> Tipe Menu:
+          </span>
+          <button
+            onClick={() => setSelectedCategory('ALL')}
+            className={`px-3 py-1 rounded-lg font-medium transition-all whitespace-nowrap ${
+              selectedCategory === 'ALL'
+                ? 'bg-primary-600 text-white shadow-xs'
+                : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+            }`}
+          >
+            Semua Tipe ({totalMenu})
+          </button>
+          {categoryList?.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-1 rounded-lg font-medium transition-all whitespace-nowrap ${
+                selectedCategory === cat
+                  ? 'bg-primary-600 text-white shadow-xs'
+                  : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -248,6 +298,7 @@ export function MenuManagementPage() {
             <thead>
               <tr>
                 <th>Menu & Kode</th>
+                <th>Tipe Menu</th>
                 <th>Satuan</th>
                 <th className="text-right">Harga Pokok (HPP)</th>
                 <th className="text-right">Harga Jual Kasir</th>
@@ -259,14 +310,14 @@ export function MenuManagementPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12">
+                  <td colSpan={8} className="text-center py-12">
                     <div className="w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                     <span className="text-xs text-surface-400">Memuat katalog menu kasir...</span>
                   </td>
                 </tr>
               ) : products && products.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-surface-500 text-sm">
+                  <td colSpan={8} className="text-center py-12 text-surface-500 text-sm">
                     Belum ada menu yang terdaftar untuk unit usaha ini.
                   </td>
                 </tr>
@@ -282,6 +333,17 @@ export function MenuManagementPage() {
                           <p className="font-semibold text-surface-900 text-sm">{p.name}</p>
                           <p className="text-xs text-surface-400 font-mono">{p.code}</p>
                         </div>
+                      </td>
+                      <td>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                            p.category
+                              ? 'bg-primary-50 text-primary-700 border border-primary-200'
+                              : 'bg-surface-100 text-surface-600'
+                          }`}
+                        >
+                          {p.category || 'Umum'}
+                        </span>
                       </td>
                       <td>
                         <span className="px-2 py-0.5 rounded text-xs bg-surface-100 text-surface-700 font-medium">
@@ -400,6 +462,29 @@ export function MenuManagementPage() {
                   placeholder="Contoh: Nasi Goreng Spesial, Es Kopi Susu, Sewa Meja 1 Jam"
                   className="input"
                 />
+              </div>
+
+              <div>
+                <label className="label flex items-center justify-between">
+                  <span>Tipe Menu / Kategori (Bebas Ditulis)</span>
+                  <span className="text-[11px] text-primary-600 font-normal">Ketik bebas atau pilih</span>
+                </label>
+                <input
+                  list="menu-types-datalist"
+                  type="text"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="Contoh: Makanan, Minuman, Paket Hemat, Camilan, Kopi, Spesial..."
+                  className="input"
+                />
+                <datalist id="menu-types-datalist">
+                  {categoryList?.map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
+                <p className="text-[11px] text-surface-400 mt-1">
+                  Admin bebas menulis tipe menu baru atau memilih saran yang sudah ada di atas.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

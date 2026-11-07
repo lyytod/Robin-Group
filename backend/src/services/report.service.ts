@@ -853,4 +853,296 @@ export class ReportService {
 
     return (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
   }
+
+  /**
+   * 5. LAPORAN PENJUALAN (SALES REPORT)
+   * Menyajikan history penjualan per-struk dan rekapitulasi menu yang laku
+   */
+  static async getSalesReport(params: {
+    businessId?: number;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const where: any = {
+      type: 'PEMASUKAN',
+    };
+
+    if (params.businessId) {
+      where.businessId = params.businessId;
+    }
+
+    if (params.startDate || params.endDate) {
+      where.transactionDate = {};
+      if (params.startDate) {
+        where.transactionDate.gte = new Date(params.startDate);
+      }
+      if (params.endDate) {
+        const end = new Date(params.endDate);
+        end.setHours(23, 59, 59, 999);
+        where.transactionDate.lte = end;
+      }
+    }
+
+    const transactions = await prisma.transaction.findMany({
+      where,
+      orderBy: { transactionDate: 'desc' },
+      include: {
+        business: { select: { id: true, name: true, code: true } },
+        createdBy: { select: { id: true, fullName: true, username: true } },
+        items: {
+          include: {
+            product: { select: { id: true, code: true, name: true, category: true, unit: true } },
+          },
+        },
+      },
+    });
+
+    const validTransactions = transactions.filter((t) => t.voidedAt === null);
+    const voidedTransactions = transactions.filter((t) => t.voidedAt !== null);
+
+    const totalRevenue = validTransactions.reduce((acc, t) => acc + Number(t.grandTotal), 0);
+    const totalDiscounts = validTransactions.reduce((acc, t) => acc + Number(t.discountAmount), 0);
+    const totalTax = validTransactions.reduce((acc, t) => acc + Number(t.taxAmount), 0);
+    const totalTransactions = validTransactions.length;
+    const averageTransaction = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+
+    const paymentMethods: Record<string, { count: number; total: number }> = {
+      TUNAI: { count: 0, total: 0 },
+      TRANSFER: { count: 0, total: 0 },
+      QRIS: { count: 0, total: 0 },
+      DEBIT: { count: 0, total: 0 },
+      KREDIT: { count: 0, total: 0 },
+    };
+
+    validTransactions.forEach((t) => {
+      const pm = t.paymentMethod;
+      if (!paymentMethods[pm]) {
+        paymentMethods[pm] = { count: 0, total: 0 };
+      }
+      paymentMethods[pm].count += 1;
+      paymentMethods[pm].total += Number(t.grandTotal);
+    });
+
+    // Agregasi Menu / Produk Terlaris
+    const productMap = new Map<string, {
+      productId: number | null;
+      productCode: string;
+      productName: string;
+      category: string;
+      unit: string;
+      totalQty: number;
+      totalRevenue: number;
+      transactionCount: number;
+    }>();
+
+    let totalItemsSold = 0;
+
+    validTransactions.forEach((trx) => {
+      trx.items.forEach((item) => {
+        const key = item.productId ? `P_${item.productId}` : `N_${item.itemName}`;
+        const qty = Number(item.quantity);
+        const subtotal = Number(item.subtotal);
+        totalItemsSold += qty;
+
+        const existing = productMap.get(key);
+        if (existing) {
+          existing.totalQty += qty;
+          existing.totalRevenue += subtotal;
+          existing.transactionCount += 1;
+        } else {
+          productMap.set(key, {
+            productId: item.productId,
+            productCode: item.product?.code || '-',
+            productName: item.itemName,
+            category: item.product?.category || 'Umum',
+            unit: item.product?.unit || 'PCS',
+            totalQty: qty,
+            totalRevenue: subtotal,
+            transactionCount: 1,
+          });
+        }
+      });
+    });
+
+    const productSales = Array.from(productMap.values())
+      .map((p) => ({
+        ...p,
+        totalRevenue: Number(p.totalRevenue.toFixed(2)),
+        averagePrice: p.totalQty > 0 ? Number((p.totalRevenue / p.totalQty).toFixed(2)) : 0,
+        contributionPercentage:
+          totalRevenue > 0 ? Number(((p.totalRevenue / totalRevenue) * 100).toFixed(1)) : 0,
+      }))
+      .sort((a, b) => b.totalQty - a.totalQty || b.totalRevenue - a.totalRevenue);
+
+    const receipts = transactions.map((t) => ({
+      id: t.id,
+      nomorBukti: t.nomorBukti,
+      transactionDate: t.transactionDate,
+      businessId: t.businessId,
+      businessName: t.business.name,
+      businessCode: t.business.code,
+      totalAmount: Number(t.totalAmount),
+      discountAmount: Number(t.discountAmount),
+      taxAmount: Number(t.taxAmount),
+      grandTotal: Number(t.grandTotal),
+      paymentMethod: t.paymentMethod,
+      cashPaid: t.cashPaid ? Number(t.cashPaid) : null,
+      changeAmount: t.changeAmount ? Number(t.changeAmount) : null,
+      notes: t.notes,
+      isVoided: t.voidedAt !== null,
+      voidedAt: t.voidedAt,
+      voidReason: t.voidReason,
+      cashier: t.createdBy.fullName,
+      itemCount: t.items.length,
+      items: t.items.map((i) => ({
+        id: i.id,
+        productId: i.productId,
+        productCode: i.product?.code || '-',
+        itemName: i.itemName,
+        category: i.product?.category || 'Umum',
+        quantity: Number(i.quantity),
+        unitPrice: Number(i.unitPrice),
+        subtotal: Number(i.subtotal),
+      })),
+    }));
+
+    let businessName = 'Konsolidasi Seluruh Usaha';
+    if (params.businessId) {
+      const b = await prisma.business.findUnique({
+        where: { id: params.businessId },
+        select: { name: true },
+      });
+      if (b) businessName = b.name;
+    }
+
+    return {
+      businessName,
+      isConsolidated: !params.businessId,
+      period: {
+        startDate: params.startDate || null,
+        endDate: params.endDate || null,
+      },
+      summary: {
+        totalRevenue,
+        totalTransactions,
+        totalItemsSold,
+        totalDiscounts,
+        totalTax,
+        averageTransaction: Number(averageTransaction.toFixed(2)),
+        voidCount: voidedTransactions.length,
+        voidAmount: voidedTransactions.reduce((acc, t) => acc + Number(t.grandTotal), 0),
+        paymentMethods,
+      },
+      productSales,
+      receipts,
+    };
+  }
+
+  /**
+   * 6. EKSPOR LAPORAN PENJUALAN KE EXCEL (2 SHEET: STRUK & REKAP MENU)
+   */
+  static async exportSalesExcel(params: {
+    businessId?: number;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const data = await this.getSalesReport(params);
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Robin Group POS & Multi-Accounting';
+    workbook.created = new Date();
+
+    // SHEET 1: REKAPITULASI PENJUALAN PER STRUK
+    const sheetReceipts = workbook.addWorksheet('Riwayat Struk Penjualan', {
+      views: [{ showGridLines: true }],
+    });
+
+    sheetReceipts.columns = [
+      { header: 'NO. STRUK', key: 'nomorBukti', width: 20 },
+      { header: 'TANGGAL & WAKTU', key: 'date', width: 22 },
+      { header: 'UNIT USAHA', key: 'business', width: 20 },
+      { header: 'KASIR', key: 'cashier', width: 18 },
+      { header: 'METODE', key: 'paymentMethod', width: 14 },
+      { header: 'JML ITEM', key: 'itemCount', width: 12 },
+      { header: 'SUBTOTAL (RP)', key: 'subtotal', width: 18 },
+      { header: 'DISKON (RP)', key: 'discount', width: 16 },
+      { header: 'PAJAK (RP)', key: 'tax', width: 16 },
+      { header: 'TOTAL (RP)', key: 'grandTotal', width: 18 },
+      { header: 'STATUS', key: 'status', width: 14 },
+      { header: 'CATATAN', key: 'notes', width: 25 },
+    ];
+
+    sheetReceipts.spliceRows(
+      1,
+      0,
+      ['ROBIN GROUP - LAPORAN PENJUALAN PER STRUK'],
+      [`Unit Usaha: ${data.businessName}`],
+      [`Periode: ${data.period.startDate || 'Awal'} s/d ${data.period.endDate || 'Sekarang'}`],
+      [
+        `Total Omset: Rp ${data.summary.totalRevenue.toLocaleString('id-ID')} | Total Transaksi: ${data.summary.totalTransactions}`,
+      ],
+      []
+    );
+
+    data.receipts.forEach((r) => {
+      sheetReceipts.addRow({
+        nomorBukti: r.nomorBukti,
+        date: new Date(r.transactionDate).toLocaleString('id-ID'),
+        business: r.businessName,
+        cashier: r.cashier,
+        paymentMethod: r.paymentMethod,
+        itemCount: r.itemCount,
+        subtotal: r.totalAmount,
+        discount: r.discountAmount,
+        tax: r.taxAmount,
+        grandTotal: r.grandTotal,
+        status: r.isVoided ? 'DIBATALKAN' : 'SELESAI',
+        notes: r.notes || (r.isVoided ? `Batal: ${r.voidReason}` : '-'),
+      });
+    });
+
+    // SHEET 2: PENJUALAN PER MENU (MENU LAKU)
+    const sheetProducts = workbook.addWorksheet('Penjualan Menu Laku', {
+      views: [{ showGridLines: true }],
+    });
+
+    sheetProducts.columns = [
+      { header: 'PERINGKAT', key: 'rank', width: 12 },
+      { header: 'KODE MENU', key: 'code', width: 16 },
+      { header: 'NAMA MENU', key: 'name', width: 30 },
+      { header: 'TIPE MENU', key: 'category', width: 18 },
+      { header: 'TOTAL TERJUAL (QTY)', key: 'qty', width: 20 },
+      { header: 'SATUAN', key: 'unit', width: 12 },
+      { header: 'TOTAL OMSET (RP)', key: 'revenue', width: 20 },
+      { header: 'KONTRIBUSI (%)', key: 'contribution', width: 16 },
+      { header: 'JML TRANSAKSI', key: 'trxCount', width: 16 },
+    ];
+
+    sheetProducts.spliceRows(
+      1,
+      0,
+      ['ROBIN GROUP - REKAPITULASI PENJUALAN PER MENU (MENU LAKU)'],
+      [`Unit Usaha: ${data.businessName}`],
+      [`Periode: ${data.period.startDate || 'Awal'} s/d ${data.period.endDate || 'Sekarang'}`],
+      [
+        `Total Menu Terjual: ${data.summary.totalItemsSold} | Total Omset: Rp ${data.summary.totalRevenue.toLocaleString('id-ID')}`,
+      ],
+      []
+    );
+
+    data.productSales.forEach((p, index) => {
+      sheetProducts.addRow({
+        rank: `#${index + 1}`,
+        code: p.productCode,
+        name: p.productName,
+        category: p.category,
+        qty: p.totalQty,
+        unit: p.unit,
+        revenue: p.totalRevenue,
+        contribution: `${p.contributionPercentage}%`,
+        trxCount: p.transactionCount,
+      });
+    });
+
+    return (await workbook.xlsx.writeBuffer()) as unknown as Buffer;
+  }
 }

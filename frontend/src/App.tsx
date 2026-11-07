@@ -19,6 +19,8 @@ const ReportsPage = React.lazy(() => import('./features/reports/ReportsPage'));
 const SalaryManagementPage = React.lazy(() =>
   import('./features/salaries/SalaryManagementPage').then((m) => ({ default: m.SalaryManagementPage }))
 );
+const AttendancePage = React.lazy(() => import('./features/attendance/AttendancePage'));
+const OperationalHoursPage = React.lazy(() => import('./features/shifts/OperationalHoursPage'));
 
 // Konfigurasi TanStack React Query
 const queryClient = new QueryClient({
@@ -44,7 +46,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { token, user } = useAuthStore();
   if (token) {
-    if (user?.role === 'KASIR') {
+    if (user?.role === 'KASIR' || user?.role === 'AGENT') {
       return <Navigate to="/pos" replace />;
     }
     return <Navigate to="/dashboard" replace />;
@@ -52,13 +54,13 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Guard Role-Based Route (Membatasi akses per peran: SUPER_ADMIN, ADMIN, KASIR)
+// Guard Role-Based Route (Membatasi akses per peran: SUPER_ADMIN, ADMIN, KASIR, AGENT)
 function RoleRoute({
   children,
   allowedRoles,
 }: {
   children: React.ReactNode;
-  allowedRoles: ('SUPER_ADMIN' | 'ADMIN' | 'KASIR')[];
+  allowedRoles: ('SUPER_ADMIN' | 'ADMIN' | 'KASIR' | 'AGENT')[];
 }) {
   const { user } = useAuthStore();
   if (!user) {
@@ -66,8 +68,8 @@ function RoleRoute({
   }
 
   if (!allowedRoles.includes(user.role as any)) {
-    // Jika kasir mencoba mengakses halaman manajerial, alihkan langsung ke kasir POS
-    if (user.role === 'KASIR') {
+    // Jika kasir atau agent mencoba mengakses halaman yang tidak diizinkan, alihkan langsung ke kasir POS
+    if (user.role === 'KASIR' || user.role === 'AGENT') {
       return <Navigate to="/pos" replace />;
     }
     return <Navigate to="/dashboard" replace />;
@@ -82,7 +84,7 @@ function DefaultRedirect() {
   if (!token) {
     return <Navigate to="/login" replace />;
   }
-  if (user?.role === 'KASIR') {
+  if (user?.role === 'KASIR' || user?.role === 'AGENT') {
     return <Navigate to="/pos" replace />;
   }
   return <Navigate to="/dashboard" replace />;
@@ -151,6 +153,26 @@ function App() {
                 }
               />
 
+              {/* Absensi Karyawan: Dapat diakses oleh Super Admin, Admin, Kasir, dan Agent */}
+              <Route
+                path="/attendance"
+                element={
+                  <RoleRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'KASIR', 'AGENT']}>
+                    <AttendancePage />
+                  </RoleRoute>
+                }
+              />
+
+              {/* Jam Operasional & Kedisiplinan: Hanya Super Admin & Admin */}
+              <Route
+                path="/operational-hours"
+                element={
+                  <RoleRoute allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
+                    <OperationalHoursPage />
+                  </RoleRoute>
+                }
+              />
+
               {/* Manajemen Gaji: Hanya Super Admin & Admin */}
               <Route
                 path="/salaries"
@@ -161,17 +183,17 @@ function App() {
                 }
               />
 
-              {/* Kasir POS: Dapat diakses oleh Super Admin, Admin, dan Kasir */}
+              {/* Kasir POS: Dapat diakses oleh Super Admin, Admin, Kasir, dan Agent */}
               <Route
                 path="/pos"
                 element={
-                  <RoleRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'KASIR']}>
+                  <RoleRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'KASIR', 'AGENT']}>
                     <PosPage />
                   </RoleRoute>
                 }
               />
 
-              {/* Manajemen Menu, Inventaris, Akuntansi, & Laporan: Hanya Super Admin & Admin */}
+              {/* Manajemen Menu: Hanya Super Admin & Admin */}
               <Route
                 path="/menu"
                 element={
@@ -180,10 +202,11 @@ function App() {
                   </RoleRoute>
                 }
               />
+              {/* Inventaris & Stok: Dapat diakses dan dikelola oleh Super Admin, Admin, dan Agent */}
               <Route
                 path="/inventory"
                 element={
-                  <RoleRoute allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
+                  <RoleRoute allowedRoles={['SUPER_ADMIN', 'ADMIN', 'AGENT']}>
                     <InventoryPage />
                   </RoleRoute>
                 }

@@ -5,6 +5,7 @@ import { calculateTotalPages } from '../utils/helpers.js';
 export interface CreateProductInput {
   code: string;
   name: string;
+  category?: string;
   unit?: string;
   sellingPrice: number | string;
   purchasePrice?: number | string;
@@ -16,6 +17,7 @@ export interface CreateProductInput {
 export interface UpdateProductInput {
   code?: string;
   name?: string;
+  category?: string;
   unit?: string;
   sellingPrice?: number | string;
   purchasePrice?: number | string;
@@ -37,6 +39,7 @@ export class ProductService {
    */
   static async getAll(params: {
     businessId: number;
+    category?: string;
     search?: string;
     lowStockOnly?: boolean;
     page: number;
@@ -48,10 +51,15 @@ export class ProductService {
       deletedAt: null,
     };
 
+    if (params.category && params.category !== 'ALL') {
+      where.category = params.category;
+    }
+
     if (params.search) {
       where.OR = [
         { name: { contains: params.search } },
         { code: { contains: params.search } },
+        { category: { contains: params.search } },
       ];
     }
 
@@ -79,6 +87,7 @@ export class ProductService {
         id: p.id,
         code: p.code,
         name: p.name,
+        category: p.category,
         unit: p.unit,
         sellingPrice: Number(p.sellingPrice),
         purchasePrice: Number(p.purchasePrice),
@@ -100,6 +109,26 @@ export class ProductService {
         totalPages: calculateTotalPages(total, params.limit),
       },
     };
+  }
+
+  /**
+   * Mengambil daftar kategori / tipe menu yang sudah ada
+   */
+  static async getCategories(businessId: number) {
+    const products = await prisma.product.findMany({
+      where: {
+        businessId,
+        deletedAt: null,
+        category: { not: null },
+      },
+      select: { category: true },
+      distinct: ['category'],
+      orderBy: { category: 'asc' },
+    });
+
+    return products
+      .map((p) => p.category?.trim())
+      .filter((cat): cat is string => Boolean(cat && cat.length > 0));
   }
 
   /**
@@ -127,6 +156,7 @@ export class ProductService {
       id: product.id,
       code: product.code,
       name: product.name,
+      category: product.category,
       unit: product.unit,
       sellingPrice: Number(product.sellingPrice),
       purchasePrice: Number(product.purchasePrice),
@@ -179,6 +209,7 @@ export class ProductService {
           businessId,
           code: cleanCode,
           name: data.name.trim(),
+          category: data.category?.trim() || null,
           unit: data.unit?.trim() || 'PCS',
           sellingPrice: sellPrice,
           purchasePrice: buyPrice,
@@ -209,6 +240,7 @@ export class ProductService {
         id: product.id,
         code: product.code,
         name: product.name,
+        category: product.category,
         unit: product.unit,
         sellingPrice: Number(product.sellingPrice),
         purchasePrice: Number(product.purchasePrice),
@@ -249,6 +281,7 @@ export class ProductService {
     const updateData: any = {};
     if (data.name) updateData.name = data.name.trim();
     if (data.code) updateData.code = data.code;
+    if (data.category !== undefined) updateData.category = data.category?.trim() || null;
     if (data.unit) updateData.unit = data.unit.trim();
     if (data.sellingPrice !== undefined) updateData.sellingPrice = new Prisma.Decimal(data.sellingPrice);
     if (data.purchasePrice !== undefined) updateData.purchasePrice = new Prisma.Decimal(data.purchasePrice);
@@ -265,6 +298,7 @@ export class ProductService {
       id: updated.id,
       code: updated.code,
       name: updated.name,
+      category: updated.category,
       unit: updated.unit,
       sellingPrice: Number(updated.sellingPrice),
       purchasePrice: Number(updated.purchasePrice),

@@ -18,9 +18,9 @@ function reportAccessMiddleware(
     return;
   }
 
-  // Kasir tidak memiliki akses ke laporan keuangan atau dashboard analitik
-  if (req.user.role === UserRole.KASIR) {
-    sendError(res, 'Akses ditolak: Pengguna dengan peran Kasir tidak diizinkan mengakses laporan keuangan.', 403);
+  // Kasir dan Agent tidak memiliki akses ke laporan keuangan atau dashboard analitik
+  if (req.user.role === UserRole.KASIR || req.user.role === UserRole.AGENT) {
+    sendError(res, 'Akses ditolak: Pengguna dengan peran Kasir atau Agent tidak diizinkan mengakses laporan keuangan.', 403);
     return;
   }
 
@@ -73,6 +73,8 @@ router.use(authenticate);
 router.use(reportAccessMiddleware);
 
 router.get('/dashboard', ReportController.getDashboard);
+router.get('/sales', ReportController.getSalesReport);
+router.get('/export/sales-excel', ReportController.exportSalesExcel);
 router.get('/income-statement', ReportController.getIncomeStatement);
 router.get('/balance-sheet', ReportController.getBalanceSheet);
 router.get('/cash-flow', ReportController.getCashFlow);

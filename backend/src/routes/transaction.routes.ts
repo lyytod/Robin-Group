@@ -12,11 +12,10 @@ router.use(requireBusinessAccess);
 router.get('/', TransactionController.getAll);
 router.get('/:id', TransactionController.getById);
 
-// Kasir, Admin Usaha, dan Super Admin dapat menginput penjualan & pengeluaran
+// Kasir, Agent, Admin Usaha, dan Super Admin dapat menginput penjualan & pengeluaran, serta update & void struk
 router.post('/sale', TransactionController.createSale);
 router.post('/expense', TransactionController.createExpense);
-
-// Membatalkan transaksi (void) dibatasi untuk Admin dan Super Admin
-router.post('/:id/void', requireRoles(UserRole.SUPER_ADMIN, UserRole.ADMIN), TransactionController.voidTransaction);
+router.put('/:id', requireRoles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.KASIR, UserRole.AGENT), TransactionController.update);
+router.post('/:id/void', requireRoles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.KASIR, UserRole.AGENT), TransactionController.voidTransaction);
 
 export default router;

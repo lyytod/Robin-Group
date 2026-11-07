@@ -19,10 +19,12 @@ export class ProductController {
         req.query.limit as string
       );
       const search = req.query.search as string | undefined;
+      const category = req.query.category as string | undefined;
       const lowStockOnly = req.query.lowStock === 'true';
 
       const result = await ProductService.getAll({
         businessId,
+        category,
         search,
         lowStockOnly,
         page,
@@ -33,6 +35,23 @@ export class ProductController {
       sendSuccess(res, result.products, 'Daftar produk berhasil diambil', 200, result.meta);
     } catch (error: any) {
       sendError(res, error.message || 'Gagal mengambil daftar produk', 400);
+    }
+  }
+
+  /**
+   * GET /api/products/categories
+   */
+  static async getCategories(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const businessId = req.businessId;
+      if (!businessId) {
+        sendError(res, 'Parameter unit usaha (business_id) diperlukan.', 400);
+        return;
+      }
+      const categories = await ProductService.getCategories(businessId);
+      sendSuccess(res, categories, 'Daftar tipe/kategori menu berhasil diambil');
+    } catch (error: any) {
+      sendError(res, error.message || 'Gagal mengambil daftar tipe menu', 400);
     }
   }
 

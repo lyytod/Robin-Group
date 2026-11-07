@@ -17,6 +17,8 @@ import {
   Store,
   Shield,
   Banknote,
+  UserCheck,
+  Clock,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
@@ -35,9 +37,19 @@ export function AppLayout() {
   };
 
   const isKasir = user?.role === 'KASIR';
+  const isAgent = user?.role === 'AGENT';
 
   const navItems = isKasir
-    ? [{ name: 'Kasir (POS)', path: '/pos', icon: ShoppingCart }]
+    ? [
+        { name: 'Kasir (POS)', path: '/pos', icon: ShoppingCart },
+        { name: 'Absensi Karyawan', path: '/attendance', icon: UserCheck },
+      ]
+    : isAgent
+    ? [
+        { name: 'Kasir (POS)', path: '/pos', icon: ShoppingCart },
+        { name: 'Absensi Karyawan', path: '/attendance', icon: UserCheck },
+        { name: 'Inventaris & Stok', path: '/inventory', icon: Boxes },
+      ]
     : [
         { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
         ...(isSuperAdmin
@@ -46,6 +58,8 @@ export function AppLayout() {
               { name: 'Manajemen Staf', path: '/users', icon: Users },
             ]
           : []),
+        { name: 'Absensi Karyawan', path: '/attendance', icon: UserCheck },
+        { name: 'Jam Operasional', path: '/operational-hours', icon: Clock },
         { name: 'Manajemen Gaji', path: '/salaries', icon: Banknote },
         { name: 'Kasir (POS)', path: '/pos', icon: ShoppingCart },
         { name: 'Manajemen Menu', path: '/menu', icon: UtensilsCrossed },

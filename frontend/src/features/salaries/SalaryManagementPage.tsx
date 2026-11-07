@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Banknote,
@@ -14,10 +15,15 @@ import {
   X,
   Briefcase,
   RotateCcw,
+  RefreshCw,
   Wallet,
   AlertCircle,
   CheckCircle2,
   Clock,
+  Sliders,
+  UtensilsCrossed,
+  UserX,
+  Save,
 } from 'lucide-react';
 import apiClient from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
@@ -44,6 +50,7 @@ interface EmployeeItem {
   baseSalary: number;
   allowance: number;
   totalFixedSalary: number;
+  monthlyDayOffQuota?: number;
   pendingDeductionsTotal?: number;
   bankName?: string | null;
   bankAccount?: string | null;
@@ -73,6 +80,19 @@ interface SalaryPaymentItem {
   allowance: number;
   bonus: number;
   deductions: number;
+  attendanceDays?: number;
+  onTimeDays?: number;
+  lateDays?: number;
+  lateMinutes?: number;
+  alfaDays?: number;
+  izinDays?: number;
+  sakitDays?: number;
+  liburDays?: number;
+  cutiDays?: number;
+  disciplineBonus?: number;
+  lateDeduction?: number;
+  mealAllowance?: number;
+  absenceDeduction?: number;
   netSalary: number;
   paymentMethod: 'TUNAI' | 'TRANSFER' | 'QRIS' | 'DEBIT' | 'KREDIT';
   account: {
@@ -150,7 +170,23 @@ export function SalaryManagementPage() {
   const queryClient = useQueryClient();
   const { activeBusiness } = useAuthStore();
 
-  const [activeTab, setActiveTab] = useState<'employees' | 'payments' | 'deductions'>('employees');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') as 'employees' | 'payments' | 'deductions' | 'policies' | null;
+  const [activeTab, setActiveTab] = useState<'employees' | 'payments' | 'deductions' | 'policies'>(
+    initialTab && ['employees', 'payments', 'deductions', 'policies'].includes(initialTab) ? initialTab : 'employees'
+  );
+
+  useEffect(() => {
+    const tabParam = searchParams.get('tab') as 'employees' | 'payments' | 'deductions' | 'policies' | null;
+    if (tabParam && ['employees', 'payments', 'deductions', 'policies'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tab: 'employees' | 'payments' | 'deductions' | 'policies') => {
+    setActiveTab(tab);
+    setSearchParams(tab === 'employees' ? {} : { tab });
+  };
 
   // Filter Karyawan
   const [employeeSearch, setEmployeeSearch] = useState('');
@@ -183,6 +219,7 @@ export function SalaryManagementPage() {
   const [empSalaryType, setEmpSalaryType] = useState<'BULANAN' | 'HARIAN'>('BULANAN');
   const [empBaseSalary, setEmpBaseSalary] = useState('2500000');
   const [empAllowance, setEmpAllowance] = useState('300000');
+  const [empMonthlyDayOffQuota, setEmpMonthlyDayOffQuota] = useState('4');
   const [empBankName, setEmpBankName] = useState('');
   const [empBankAccount, setEmpBankAccount] = useState('');
   const [empJoinDate, setEmpJoinDate] = useState(() => formatTanggalISO());
@@ -206,6 +243,39 @@ export function SalaryManagementPage() {
     amount: 0,
     count: 0,
   });
+  const [payAttendanceSummary, setPayAttendanceSummary] = useState<{
+    totalPresent: number;
+    onTimeCount: number;
+    lateCount: number;
+    totalLateMinutes: number;
+    izinCount: number;
+    sakitCount: number;
+    alfaCount: number;
+    liburCount?: number;
+    cutiCount?: number;
+    monthlyDayOffQuota?: number;
+    remainingDayOffQuota?: number;
+    isEligibleForDisciplineBonus: boolean;
+    disciplineBonusAmount: number;
+    lateDeductionAmount: number;
+    mealAllowanceRate?: number;
+    mealAllowanceAmount?: number;
+    absenceDeductionRate?: number;
+    absenceDeductionAmount?: number;
+  } | null>(null);
+  const [payDisciplineBonus, setPayDisciplineBonus] = useState(0);
+  const [payLateDeduction, setPayLateDeduction] = useState(0);
+  const [payMealAllowance, setPayMealAllowance] = useState(0);
+  const [payAbsenceDeduction, setPayAbsenceDeduction] = useState(0);
+  const [payAttendanceDays, setPayAttendanceDays] = useState(0);
+  const [payOnTimeDays, setPayOnTimeDays] = useState(0);
+  const [payLateDays, setPayLateDays] = useState(0);
+  const [payLateMinutes, setPayLateMinutes] = useState(0);
+  const [payAlfaDays, setPayAlfaDays] = useState(0);
+  const [payIzinDays, setPayIzinDays] = useState(0);
+  const [paySakitDays, setPaySakitDays] = useState(0);
+  const [payLiburDays, setPayLiburDays] = useState(0);
+  const [payCutiDays, setPayCutiDays] = useState(0);
   const [payMethod, setPayMethod] = useState<'TUNAI' | 'TRANSFER'>('TUNAI');
   const [payAccountId, setPayAccountId] = useState<string>('');
   const [payNotes, setPayNotes] = useState('');
@@ -216,6 +286,15 @@ export function SalaryManagementPage() {
   const [dedType, setDedType] = useState<'KASBON' | 'POTONGAN'>('KASBON');
   const [dedDate, setDedDate] = useState(() => formatTanggalISO());
   const [dedNotes, setDedNotes] = useState<string>('');
+
+  // Form State Kebijakan Gaji & Disiplin
+  const [ruleMealAllowance, setRuleMealAllowance] = useState('15000');
+  const [ruleAbsenceDeduction, setRuleAbsenceDeduction] = useState('50000');
+  const [ruleDisciplineBonus, setRuleDisciplineBonus] = useState('10000');
+  const [ruleLateOccurrence, setRuleLateOccurrence] = useState('15000');
+  const [ruleLatePerMinute, setRuleLatePerMinute] = useState('0');
+  const [ruleMinWorkDays, setRuleMinWorkDays] = useState('0');
+  const [ruleNotes, setRuleNotes] = useState('');
 
   // Fetch Summary KPI
   const { data: summaryData } = useQuery({
@@ -307,6 +386,28 @@ export function SalaryManagementPage() {
         a.type === 'ASET' &&
         (a.code.startsWith('1-1001') || a.code.startsWith('1-1002') || a.code.startsWith('1-1003'))
     ) ?? [];
+
+  // Fetch Kebijakan Operasional & Gaji
+  const { data: operationalRuleData, isLoading: isLoadingRule } = useQuery({
+    queryKey: ['operational-rule', activeBusiness?.id],
+    queryFn: async () => {
+      const res = await apiClient.get<ApiResponse<any>>('/shifts/rules');
+      return res.data.data;
+    },
+    enabled: !!activeBusiness?.id,
+  });
+
+  useEffect(() => {
+    if (operationalRuleData) {
+      setRuleMealAllowance(operationalRuleData.mealAllowancePerDay?.toString() ?? '15000');
+      setRuleAbsenceDeduction(operationalRuleData.absenceDeductionPerDay?.toString() ?? '50000');
+      setRuleDisciplineBonus(operationalRuleData.disciplineBonusAmount?.toString() ?? '10000');
+      setRuleLateOccurrence(operationalRuleData.lateDeductionPerOccurrence?.toString() ?? '15000');
+      setRuleLatePerMinute(operationalRuleData.lateDeductionPerMinute?.toString() ?? '0');
+      setRuleMinWorkDays(operationalRuleData.minWorkDaysForBonus?.toString() ?? '0');
+      setRuleNotes(operationalRuleData.notes ?? '');
+    }
+  }, [operationalRuleData]);
 
   // ============================================================
   // MUTATIONS
@@ -445,6 +546,34 @@ export function SalaryManagementPage() {
     },
   });
 
+  const updateRuleMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiClient.put<ApiResponse<any>>('/shifts/rules', payload);
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || 'Kebijakan gaji & kedisiplinan berhasil diperbarui!');
+      queryClient.invalidateQueries({ queryKey: ['operational-rule'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance-summary'] });
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Gagal memperbarui kebijakan gaji.');
+    },
+  });
+
+  const handleRuleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateRuleMutation.mutate({
+      mealAllowancePerDay: parseFloat(ruleMealAllowance) || 0,
+      absenceDeductionPerDay: parseFloat(ruleAbsenceDeduction) || 0,
+      disciplineBonusAmount: parseFloat(ruleDisciplineBonus) || 0,
+      lateDeductionPerOccurrence: parseFloat(ruleLateOccurrence) || 0,
+      lateDeductionPerMinute: parseFloat(ruleLatePerMinute) || 0,
+      minWorkDaysForBonus: parseInt(ruleMinWorkDays, 10) || 0,
+      notes: ruleNotes.trim() || undefined,
+    });
+  };
+
   // ============================================================
   // HANDLERS
   // ============================================================
@@ -458,6 +587,7 @@ export function SalaryManagementPage() {
     setEmpSalaryType('BULANAN');
     setEmpBaseSalary('2500000');
     setEmpAllowance('300000');
+    setEmpMonthlyDayOffQuota('4');
     setEmpBankName('');
     setEmpBankAccount('');
     setEmpJoinDate(formatTanggalISO());
@@ -476,6 +606,7 @@ export function SalaryManagementPage() {
     setEmpSalaryType(emp.salaryType);
     setEmpBaseSalary(emp.baseSalary.toString());
     setEmpAllowance(emp.allowance.toString());
+    setEmpMonthlyDayOffQuota(emp.monthlyDayOffQuota !== undefined ? emp.monthlyDayOffQuota.toString() : '4');
     setEmpBankName(emp.bankName || '');
     setEmpBankAccount(emp.bankAccount || '');
     setEmpJoinDate(emp.joinDate ? formatTanggalISO(emp.joinDate) : formatTanggalISO());
@@ -500,6 +631,7 @@ export function SalaryManagementPage() {
       salaryType: empSalaryType,
       baseSalary: parseFloat(empBaseSalary) || 0,
       allowance: parseFloat(empAllowance) || 0,
+      monthlyDayOffQuota: parseInt(empMonthlyDayOffQuota, 10) >= 0 ? parseInt(empMonthlyDayOffQuota, 10) : 4,
       bankName: empBankName.trim() || undefined,
       bankAccount: empBankAccount.trim() || undefined,
       joinDate: empJoinDate ? combineDateWithLocalTime(empJoinDate) : undefined,
@@ -515,38 +647,175 @@ export function SalaryManagementPage() {
     }
   };
 
-  // Buka modal proses pembayaran gaji (otomatis mengambil akumulasi kasbon belum lunas)
+  // Ambil rekapitulasi absensi & bonus kedisiplinan staf untuk periode penggajian (otomatis diterapkan)
+  const fetchAttendanceSummaryForPayment = async (
+    empId: string,
+    startDate?: string,
+    endDate?: string,
+    currentKasbon?: number,
+    baseAllowance?: number
+  ) => {
+    if (!empId) {
+      setPayAttendanceSummary(null);
+      setPayDisciplineBonus(0);
+      setPayLateDeduction(0);
+      setPayMealAllowance(0);
+      setPayAbsenceDeduction(0);
+      setPayAttendanceDays(0);
+      setPayOnTimeDays(0);
+      setPayLateDays(0);
+      setPayLateMinutes(0);
+      setPayAlfaDays(0);
+      setPayIzinDays(0);
+      setPaySakitDays(0);
+      return;
+    }
+    try {
+      const res = await apiClient.get<ApiResponse<any>>('/attendance/summary', {
+        params: {
+          employeeId: empId,
+          startDate: startDate || payPeriodStart,
+          endDate: endDate || payPeriodEnd,
+        },
+      });
+      const recaps = res.data.data?.recaps;
+      if (recaps && recaps.length > 0) {
+        const recap = recaps[0];
+        setPayAttendanceSummary(recap);
+
+        const discBonus = Number(recap.disciplineBonusAmount) || 0;
+        const lateDed = Number(recap.lateDeductionAmount) || 0;
+        const mealAllow = Number(recap.mealAllowanceAmount) || 0;
+        const absDed = Number(recap.absenceDeductionAmount) || 0;
+        const totalPresent = Number(recap.totalPresent) || 0;
+        const onTime = Number(recap.onTimeCount) || 0;
+        const late = Number(recap.lateCount) || 0;
+        const lateMins = Number(recap.totalLateMinutes) || 0;
+        const alfa = Number(recap.alfaCount) || 0;
+        const izin = Number(recap.izinCount) || 0;
+        const sakit = Number(recap.sakitCount) || 0;
+        const libur = Number(recap.liburCount) || 0;
+        const cuti = Number(recap.cutiCount) || 0;
+
+        setPayDisciplineBonus(discBonus);
+        setPayLateDeduction(lateDed);
+        setPayMealAllowance(mealAllow);
+        setPayAbsenceDeduction(absDed);
+        setPayAttendanceDays(totalPresent);
+        setPayOnTimeDays(onTime);
+        setPayLateDays(late);
+        setPayLateMinutes(lateMins);
+        setPayAlfaDays(alfa);
+        setPayIzinDays(izin);
+        setPaySakitDays(sakit);
+        setPayLiburDays(libur);
+        setPayCutiDays(cuti);
+
+        // 1. Tunjangan Tetap Staf (Uang makan tersimpan terpisah pada payMealAllowance)
+        const empBaseAllow = baseAllowance !== undefined
+          ? baseAllowance
+          : (employeesData?.find((e) => e.id.toString() === empId)?.allowance || 0);
+        setPayAllowance(empBaseAllow.toString());
+
+        // 2. Bonus Tambahan Manual (Bonus disiplin tersimpan terpisah pada payDisciplineBonus)
+        setPayBonus('0');
+
+        // 3. Potongan Kasbon / Pinjaman Staf (Denda telat & alfa tersimpan terpisah dan tidak dapat dicicil)
+        const baseKasbon = currentKasbon !== undefined ? currentKasbon : (payPendingKasbonInfo.amount || 0);
+        setPayDeductions(baseKasbon.toString());
+      } else {
+        setPayAttendanceSummary(null);
+        setPayDisciplineBonus(0);
+        setPayLateDeduction(0);
+        setPayMealAllowance(0);
+        setPayAbsenceDeduction(0);
+        setPayAttendanceDays(0);
+        setPayOnTimeDays(0);
+        setPayLateDays(0);
+        setPayLateMinutes(0);
+        setPayAlfaDays(0);
+        setPayIzinDays(0);
+        setPaySakitDays(0);
+        setPayLiburDays(0);
+        setPayCutiDays(0);
+        setPayBonus('0');
+        const empBaseAllow = baseAllowance !== undefined
+          ? baseAllowance
+          : (employeesData?.find((e) => e.id.toString() === empId)?.allowance || 0);
+        setPayAllowance(empBaseAllow.toString());
+        const baseKasbon = currentKasbon !== undefined ? currentKasbon : (payPendingKasbonInfo.amount || 0);
+        setPayDeductions(baseKasbon.toString());
+      }
+    } catch {
+      setPayAttendanceSummary(null);
+      setPayDisciplineBonus(0);
+      setPayLateDeduction(0);
+      setPayMealAllowance(0);
+      setPayAbsenceDeduction(0);
+      setPayAttendanceDays(0);
+      setPayOnTimeDays(0);
+      setPayLateDays(0);
+      setPayLateMinutes(0);
+      setPayAlfaDays(0);
+      setPayIzinDays(0);
+      setPaySakitDays(0);
+      setPayLiburDays(0);
+      setPayCutiDays(0);
+    }
+  };
+
+  // Buka modal proses pembayaran gaji (otomatis mengambil akumulasi kasbon belum lunas & rekap absensi)
   const openCreatePaymentModal = async (defaultEmployee?: EmployeeItem) => {
     const targetEmp = defaultEmployee || employeesData?.[0];
     const d = new Date();
     const empId = targetEmp ? targetEmp.id.toString() : '';
+    const pStart = formatTanggalISO(new Date(d.getFullYear(), d.getMonth(), 1));
+    const pEnd = formatTanggalISO(new Date(d.getFullYear(), d.getMonth() + 1, 0));
     setPayEmployeeId(empId);
-    setPayPeriodStart(formatTanggalISO(new Date(d.getFullYear(), d.getMonth(), 1)));
-    setPayPeriodEnd(formatTanggalISO(new Date(d.getFullYear(), d.getMonth() + 1, 0)));
+    setPayPeriodStart(pStart);
+    setPayPeriodEnd(pEnd);
     setPayDate(formatTanggalISO());
     setPayBaseSalary(targetEmp ? targetEmp.baseSalary.toString() : '0');
     setPayAllowance(targetEmp ? targetEmp.allowance.toString() : '0');
     setPayBonus('0');
     setPayMethod(targetEmp?.bankAccount ? 'TRANSFER' : 'TUNAI');
 
-    // Otomatis isi akumulasi kasbon pending
+    // Otomatis ambil akumulasi kasbon pending
+    let totalPending = 0;
+    let countPending = 0;
     if (empId) {
       try {
         const res = await apiClient.get<ApiResponse<any>>(
           `/salaries/employees/${empId}/pending-deductions`
         );
-        const totalPending = res.data.data?.totalAmount || 0;
-        const countPending = res.data.data?.count || 0;
-        setPayDeductions(totalPending.toString());
-        setPayPendingKasbonInfo({ amount: totalPending, count: countPending });
+        totalPending = res.data.data?.totalAmount || 0;
+        countPending = res.data.data?.count || 0;
       } catch {
-        const fallback = targetEmp?.pendingDeductionsTotal || 0;
-        setPayDeductions(fallback.toString());
-        setPayPendingKasbonInfo({ amount: fallback, count: fallback > 0 ? 1 : 0 });
+        totalPending = targetEmp?.pendingDeductionsTotal || 0;
+        countPending = totalPending > 0 ? 1 : 0;
       }
+    }
+    setPayPendingKasbonInfo({ amount: totalPending, count: countPending });
+    setPayDeductions(totalPending.toString());
+
+    // Otomatis ambil & terapkan rekapitulasi absensi staf
+    if (empId) {
+      await fetchAttendanceSummaryForPayment(empId, pStart, pEnd, totalPending, targetEmp?.allowance);
     } else {
-      setPayDeductions('0');
-      setPayPendingKasbonInfo({ amount: 0, count: 0 });
+      setPayAttendanceSummary(null);
+      setPayDisciplineBonus(0);
+      setPayLateDeduction(0);
+      setPayMealAllowance(0);
+      setPayAbsenceDeduction(0);
+      setPayAttendanceDays(0);
+      setPayOnTimeDays(0);
+      setPayLateDays(0);
+      setPayLateMinutes(0);
+      setPayAlfaDays(0);
+      setPayIzinDays(0);
+      setPaySakitDays(0);
+      setPayLiburDays(0);
+      setPayCutiDays(0);
     }
 
     // Default Akun Kas Utama (1-1001) atau Bank (1-1003)
@@ -567,22 +836,41 @@ export function SalaryManagementPage() {
       if (emp.bankAccount) setPayMethod('TRANSFER');
 
       // Ambil otomatis akumulasi kasbon pending untuk karyawan ini
+      let totalPending = 0;
+      let countPending = 0;
       try {
         const res = await apiClient.get<ApiResponse<any>>(
           `/salaries/employees/${empId}/pending-deductions`
         );
-        const totalPending = res.data.data?.totalAmount || 0;
-        const countPending = res.data.data?.count || 0;
-        setPayDeductions(totalPending.toString());
-        setPayPendingKasbonInfo({ amount: totalPending, count: countPending });
+        totalPending = res.data.data?.totalAmount || 0;
+        countPending = res.data.data?.count || 0;
       } catch {
-        const fallback = emp.pendingDeductionsTotal || 0;
-        setPayDeductions(fallback.toString());
-        setPayPendingKasbonInfo({ amount: fallback, count: fallback > 0 ? 1 : 0 });
+        totalPending = emp.pendingDeductionsTotal || 0;
+        countPending = totalPending > 0 ? 1 : 0;
       }
+      setPayPendingKasbonInfo({ amount: totalPending, count: countPending });
+      setPayDeductions(totalPending.toString());
+
+      // Ambil rekap absensi untuk staf ini dan otomatis terapkan
+      await fetchAttendanceSummaryForPayment(empId, payPeriodStart, payPeriodEnd, totalPending, emp.allowance);
     } else {
       setPayDeductions('0');
+      setPayBonus('0');
       setPayPendingKasbonInfo({ amount: 0, count: 0 });
+      setPayAttendanceSummary(null);
+      setPayDisciplineBonus(0);
+      setPayLateDeduction(0);
+      setPayMealAllowance(0);
+      setPayAbsenceDeduction(0);
+      setPayAttendanceDays(0);
+      setPayOnTimeDays(0);
+      setPayLateDays(0);
+      setPayLateMinutes(0);
+      setPayAlfaDays(0);
+      setPayIzinDays(0);
+      setPaySakitDays(0);
+      setPayLiburDays(0);
+      setPayCutiDays(0);
     }
   };
 
@@ -600,8 +888,11 @@ export function SalaryManagementPage() {
     const baseSal = parseFloat(payBaseSalary) || 0;
     const allow = parseFloat(payAllowance) || 0;
     const bon = parseFloat(payBonus) || 0;
-    const ded = parseFloat(payDeductions) || 0;
-    const net = baseSal + allow + bon - ded;
+    const kasbonDed = parseFloat(payDeductions) || 0;
+
+    const totalInc = baseSal + allow + payMealAllowance + payDisciplineBonus + bon;
+    const totalDed = payLateDeduction + payAbsenceDeduction + kasbonDed;
+    const net = totalInc - totalDed;
 
     if (net <= 0) {
       toast.error('Total gaji bersih (Take Home Pay) harus lebih besar dari 0.');
@@ -616,7 +907,20 @@ export function SalaryManagementPage() {
       baseSalary: baseSal,
       allowance: allow,
       bonus: bon,
-      deductions: ded,
+      deductions: kasbonDed, // MURNI potongan kasbon yang dialokasikan ke cicilan/pelunasan
+      attendanceDays: payAttendanceDays,
+      onTimeDays: payOnTimeDays,
+      lateDays: payLateDays,
+      lateMinutes: payLateMinutes,
+      alfaDays: payAlfaDays,
+      izinDays: payIzinDays,
+      sakitDays: paySakitDays,
+      liburDays: payLiburDays,
+      cutiDays: payCutiDays,
+      disciplineBonus: payDisciplineBonus,
+      lateDeduction: payLateDeduction,
+      mealAllowance: payMealAllowance,
+      absenceDeduction: payAbsenceDeduction,
       paymentMethod: payMethod,
       accountId: parseInt(payAccountId, 10),
       notes: payNotes.trim() || undefined,
@@ -654,12 +958,20 @@ export function SalaryManagementPage() {
     });
   };
 
-  // Live calculation preview
+  // Live calculation preview (terpisah antara komponen presensi otomatis dan kasbon)
   const numBase = parseFloat(payBaseSalary) || 0;
   const numAllow = parseFloat(payAllowance) || 0;
+  const numMeal = payMealAllowance || 0;
+  const numDiscipline = payDisciplineBonus || 0;
   const numBonus = parseFloat(payBonus) || 0;
-  const numDed = parseFloat(payDeductions) || 0;
-  const previewNetSalary = Math.max(0, numBase + numAllow + numBonus - numDed);
+
+  const numLate = payLateDeduction || 0;
+  const numAbsence = payAbsenceDeduction || 0;
+  const numKasbon = parseFloat(payDeductions) || 0;
+
+  const previewTotalIncome = numBase + numAllow + numMeal + numDiscipline + numBonus;
+  const previewTotalDeductions = numLate + numAbsence + numKasbon;
+  const previewNetSalary = Math.max(0, previewTotalIncome - previewTotalDeductions);
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
@@ -750,7 +1062,7 @@ export function SalaryManagementPage() {
       {/* Tab Navigation */}
       <div className="flex flex-wrap border-b border-surface-200 gap-2">
         <button
-          onClick={() => setActiveTab('employees')}
+          onClick={() => handleTabChange('employees')}
           className={`pb-3 px-4 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
             activeTab === 'employees'
               ? 'border-primary-600 text-primary-600'
@@ -761,7 +1073,7 @@ export function SalaryManagementPage() {
           Data Karyawan & Master Kompensasi ({employeesData?.length || 0})
         </button>
         <button
-          onClick={() => setActiveTab('payments')}
+          onClick={() => handleTabChange('payments')}
           className={`pb-3 px-4 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
             activeTab === 'payments'
               ? 'border-primary-600 text-primary-600'
@@ -772,7 +1084,7 @@ export function SalaryManagementPage() {
           Riwayat Penggajian & Slip Gaji ({paymentsData?.length || 0})
         </button>
         <button
-          onClick={() => setActiveTab('deductions')}
+          onClick={() => handleTabChange('deductions')}
           className={`pb-3 px-4 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
             activeTab === 'deductions'
               ? 'border-primary-600 text-primary-600'
@@ -781,6 +1093,17 @@ export function SalaryManagementPage() {
         >
           <Wallet className="w-4 h-4" />
           Catatan Kasbon & Potongan ({deductionsData?.length || 0})
+        </button>
+        <button
+          onClick={() => handleTabChange('policies')}
+          className={`pb-3 px-4 text-sm font-semibold flex items-center gap-2 border-b-2 transition-all ${
+            activeTab === 'policies'
+              ? 'border-primary-600 text-primary-600'
+              : 'border-transparent text-surface-500 hover:text-surface-700'
+          }`}
+        >
+          <Sliders className="w-4 h-4" />
+          Kebijakan Gaji & Disiplin
         </button>
       </div>
 
@@ -866,10 +1189,15 @@ export function SalaryManagementPage() {
                           </td>
 
                           <td className="py-3 px-4">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-100 text-surface-700 border border-surface-200">
-                              <Briefcase className="w-3 h-3 text-surface-400" />
-                              {emp.position}
-                            </span>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-100 text-surface-700 border border-surface-200 w-fit">
+                                <Briefcase className="w-3 h-3 text-surface-400" />
+                                {emp.position}
+                              </span>
+                              <span className="text-[10px] text-surface-500 font-medium pl-1">
+                                Kuota Libur: {emp.monthlyDayOffQuota ?? 4} hr/bln
+                              </span>
+                            </div>
                           </td>
 
                           <td className="py-3 px-4 text-xs font-semibold text-surface-600">
@@ -1051,9 +1379,9 @@ export function SalaryManagementPage() {
                     <th className="py-3 px-4">Karyawan & Jabatan</th>
                     <th className="py-3 px-4">Periode Kerja</th>
                     <th className="py-3 px-4 text-right">Gaji Pokok</th>
-                    <th className="py-3 px-4 text-right">Tunjangan / Bonus</th>
-                    <th className="py-3 px-4 text-right">Potongan Kasbon</th>
-                    <th className="py-3 px-4 text-right">Total Bersih</th>
+                    <th className="py-3 px-4 text-right">Tunjangan & Bonus</th>
+                    <th className="py-3 px-4 text-right">Total Potongan</th>
+                    <th className="py-3 px-4 text-right">Gaji Bersih</th>
                     <th className="py-3 px-4">Akun Pembayar</th>
                     <th className="py-3 px-4 text-center">Aksi</th>
                   </tr>
@@ -1072,42 +1400,65 @@ export function SalaryManagementPage() {
                       </td>
                     </tr>
                   ) : (
-                    paymentsData?.map((p) => (
-                      <tr key={p.id} className="hover:bg-surface-50/60 transition-colors">
-                        <td className="py-3 px-4">
-                          <p className="font-mono font-bold text-xs text-primary-700">
-                            {p.paymentNumber}
-                          </p>
-                          <p className="text-xs text-surface-500 mt-0.5">
-                            {formatTanggalJam(p.paymentDate)}
-                          </p>
-                        </td>
+                    paymentsData?.map((p) => {
+                      const isLegacy = Math.abs((p.baseSalary + p.allowance + p.bonus - p.deductions) - p.netSalary) < 0.01;
+                      const totalEarningsAddon = isLegacy
+                        ? (p.allowance + p.bonus)
+                        : ((p.allowance || 0) + (p.bonus || 0) + (p.mealAllowance || 0) + (p.disciplineBonus || 0));
+                      const totalDeductions = isLegacy
+                        ? p.deductions
+                        : ((p.deductions || 0) + (p.lateDeduction || 0) + (p.absenceDeduction || 0));
+                      const kasbonOnly = isLegacy
+                        ? Math.max(0, p.deductions - (p.lateDeduction || 0) - (p.absenceDeduction || 0))
+                        : (p.deductions || 0);
 
-                        <td className="py-3 px-4">
-                          <p className="font-semibold text-surface-900">{p.employee.name}</p>
-                          <p className="text-xs text-surface-500">{p.employee.position}</p>
-                        </td>
+                      return (
+                        <tr key={p.id} className="hover:bg-surface-50/60 transition-colors">
+                          <td className="py-3 px-4">
+                            <p className="font-mono font-bold text-xs text-primary-700">
+                              {p.paymentNumber}
+                            </p>
+                            <p className="text-xs text-surface-500 mt-0.5">
+                              {formatTanggalJam(p.paymentDate)}
+                            </p>
+                          </td>
 
-                        <td className="py-3 px-4 text-xs text-surface-600">
-                          {formatTanggal(p.periodStart)} s.d. <br />
-                          {formatTanggal(p.periodEnd)}
-                        </td>
+                          <td className="py-3 px-4">
+                            <p className="font-semibold text-surface-900">{p.employee.name}</p>
+                            <p className="text-xs text-surface-500">{p.employee.position}</p>
+                          </td>
 
-                        <td className="py-3 px-4 text-right font-mono text-surface-800">
-                          {formatRupiah(p.baseSalary)}
-                        </td>
+                          <td className="py-3 px-4 text-xs text-surface-600">
+                            {formatTanggal(p.periodStart)} s.d. <br />
+                            {formatTanggal(p.periodEnd)}
+                          </td>
 
-                        <td className="py-3 px-4 text-right font-mono text-surface-600">
-                          +{formatRupiah(p.allowance + p.bonus)}
-                        </td>
+                          <td className="py-3 px-4 text-right font-mono text-surface-800">
+                            {formatRupiah(p.baseSalary)}
+                          </td>
 
-                        <td className="py-3 px-4 text-right font-mono text-rose-600 font-semibold">
-                          {p.deductions > 0 ? `-${formatRupiah(p.deductions)}` : 'Rp 0'}
-                        </td>
+                          <td className="py-3 px-4 text-right font-mono text-surface-600">
+                            +{formatRupiah(totalEarningsAddon)}
+                          </td>
 
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
-                          {formatRupiah(p.netSalary)}
-                        </td>
+                          <td className="py-3 px-4 text-right font-mono text-rose-600 font-semibold">
+                            {totalDeductions > 0 ? (
+                              <div>
+                                <span>-{formatRupiah(totalDeductions)}</span>
+                                {kasbonOnly > 0 && (p.lateDeduction || 0) + (p.absenceDeduction || 0) > 0 && (
+                                  <p className="text-[10px] text-surface-400 font-normal">
+                                    Kasbon: {formatRupiah(kasbonOnly)}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              'Rp 0'
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600">
+                            {formatRupiah(p.netSalary)}
+                          </td>
 
                         <td className="py-3 px-4 text-xs">
                           <p className="font-medium text-surface-800">{p.account.name}</p>
@@ -1150,7 +1501,8 @@ export function SalaryManagementPage() {
                           </div>
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1339,6 +1691,290 @@ export function SalaryManagementPage() {
         </div>
       )}
 
+      {/* TAB 4: KEBIJAKAN GAJI & KEDISIPLINAN */}
+      {activeTab === 'policies' && (
+        <div className="space-y-6">
+          {/* Banner Penjelasan */}
+          <div className="p-5 bg-gradient-to-r from-blue-50 via-indigo-50/50 to-emerald-50/40 rounded-2xl border border-blue-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-xl bg-primary-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5 md:mt-0">
+                <Sliders className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-surface-900 flex items-center gap-2">
+                  Kebijakan Gaji, Uang Makan & Kedisiplinan Staf
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    Otomatis Terintegrasi ke Payroll
+                  </span>
+                </h3>
+                <p className="text-xs text-surface-600 mt-1 leading-relaxed max-w-3xl">
+                  Atur nominal uang makan harian, denda potongan jika karyawan tidak hadir (alfa), bonus disiplin bagi karyawan yang hadir tepat waktu, serta denda keterlambatan. Seluruh aturan ini otomatis dikalkulasikan dan diterapkan saat memproses pembayaran gaji staf.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {isLoadingRule ? (
+            <div className="card p-12 text-center text-surface-400">
+              Memuat data kebijakan gaji & kedisiplinan...
+            </div>
+          ) : (
+            <form onSubmit={handleRuleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* CARD 1: Uang Makan Kehadiran */}
+                <div className="card p-5 border-l-4 border-l-emerald-500 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <UtensilsCrossed className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-surface-900">Uang Makan Harian (Meal Allowance)</h4>
+                        <p className="text-[11px] text-surface-500">Dihitung per hari kerja hadir</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                      Wajib Hadir
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-surface-600 leading-relaxed bg-surface-50 p-3 rounded-xl border border-surface-200">
+                    <strong>Aturan Utama:</strong> Uang makan <em>hanya diperoleh jika karyawan hadir bekerja</em> (baik hadir tepat waktu maupun terlambat). Jika karyawan tercatat <strong>Izin, Sakit, atau Alfa</strong> (tidak hadir), maka uang makan pada hari tersebut <strong>tidak diberikan</strong>.
+                  </p>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-surface-700 mb-1">
+                      Besaran Uang Makan per Hari Hadir (Rp) <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-surface-400 font-mono text-sm">
+                        Rp
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        required
+                        value={ruleMealAllowance}
+                        onChange={(e) => setRuleMealAllowance(e.target.value)}
+                        placeholder="Contoh: 15000"
+                        className="input pl-11 font-mono text-base font-bold text-emerald-700"
+                      />
+                    </div>
+                    <p className="text-[11px] text-surface-400 mt-1">
+                      Contoh: Hadir 22 hari @ {formatRupiah(parseFloat(ruleMealAllowance) || 0)} = +{formatRupiah((parseFloat(ruleMealAllowance) || 0) * 22)} ditambahkan ke tunjangan saat penggajian.
+                    </p>
+                  </div>
+                </div>
+
+                {/* CARD 2: Potongan Ketidakhadiran (Alfa) */}
+                <div className="card p-5 border-l-4 border-l-rose-500 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                        <UserX className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-surface-900">Potongan Ketidakhadiran (Alfa)</h4>
+                        <p className="text-[11px] text-surface-500">Dikenakan jika absen tanpa keterangan</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800">
+                      Denda Alfa
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-surface-600 leading-relaxed bg-surface-50 p-3 rounded-xl border border-surface-200">
+                    <strong>Aturan Utama:</strong> Dikenakan secara otomatis dari total gaji jika karyawan tidak masuk tanpa izin resmi (status <strong>Alfa</strong>). Karyawan yang mengajukan <strong>Izin / Sakit</strong> tidak dikenakan potongan denda ini.
+                  </p>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-surface-700 mb-1">
+                      Denda / Potongan Gaji per Hari Alfa (Rp) <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-surface-400 font-mono text-sm">
+                        Rp
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        required
+                        value={ruleAbsenceDeduction}
+                        onChange={(e) => setRuleAbsenceDeduction(e.target.value)}
+                        placeholder="Contoh: 50000"
+                        className="input pl-11 font-mono text-base font-bold text-rose-600"
+                      />
+                    </div>
+                    <p className="text-[11px] text-surface-400 mt-1">
+                      Contoh: Tidak hadir 2 hari @ {formatRupiah(parseFloat(ruleAbsenceDeduction) || 0)} = -{formatRupiah((parseFloat(ruleAbsenceDeduction) || 0) * 2)} dipotong dari gaji.
+                    </p>
+                  </div>
+                </div>
+
+                {/* CARD 3: Bonus Kedisiplinan (Tepat Waktu) */}
+                <div className="card p-5 border-l-4 border-l-primary-500 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-lg bg-blue-50 text-primary-600 flex items-center justify-center">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-surface-900">Bonus Kedisiplinan (Tepat Waktu)</h4>
+                        <p className="text-[11px] text-surface-500">Reward kehadiran sebelum toleransi masuk</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                      Per Hari
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-surface-600 leading-relaxed bg-surface-50 p-3 rounded-xl border border-surface-200">
+                    <strong>Aturan Utama:</strong> Bonus dihitung <strong>per hari kerja tepat waktu</strong> saat staf melakukan presensi masuk sebelum atau tepat pada jam masuk shift (termasuk batas toleransi).
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-surface-700 mb-1">
+                        Bonus per Hari Tepat Waktu (Rp) <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-surface-400 font-mono text-sm">
+                          Rp
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1000"
+                          required
+                          value={ruleDisciplineBonus}
+                          onChange={(e) => setRuleDisciplineBonus(e.target.value)}
+                          placeholder="Contoh: 10000"
+                          className="input pl-11 font-mono text-base font-bold text-emerald-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-surface-700 mb-1">
+                        Minimal Hari Kerja (Bulan)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={ruleMinWorkDays}
+                        onChange={(e) => setRuleMinWorkDays(e.target.value)}
+                        placeholder="0 = Langsung per hari"
+                        className="input font-mono text-sm"
+                      />
+                      <p className="text-[10px] text-surface-400 mt-1">
+                        Isi 0 jika bonus langsung dihitung per hari tanpa syarat minimal kehadiran sebulan.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 4: Denda Keterlambatan */}
+                <div className="card p-5 border-l-4 border-l-amber-500 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-surface-900">Denda Keterlambatan Absensi</h4>
+                        <p className="text-[11px] text-surface-500">Penalti saat masuk melewati toleransi shift</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                      Penalti Terlambat
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-surface-600 leading-relaxed bg-surface-50 p-3 rounded-xl border border-surface-200">
+                    <strong>Aturan Utama:</strong> Dikenakan bila presensi masuk melebihi batas jam masuk & toleransi shift kerja. Bisa diset flat per kejadian atau ditambah per menit terlambat (bisa diset Rp 0 jika tidak ada denda per menit).
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-surface-700 mb-1">
+                        Denda Flat per Kejadian (Rp)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-surface-400 font-mono text-sm">
+                          Rp
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1000"
+                          value={ruleLateOccurrence}
+                          onChange={(e) => setRuleLateOccurrence(e.target.value)}
+                          placeholder="Contoh: 15000"
+                          className="input pl-11 font-mono text-sm font-semibold text-rose-600"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-surface-700 mb-1">
+                        Denda per Menit (Rp/menit)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-surface-400 font-mono text-sm">
+                          Rp
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={ruleLatePerMinute}
+                          onChange={(e) => setRuleLatePerMinute(e.target.value)}
+                          placeholder="0 = Tanpa denda per menit"
+                          className="input pl-11 font-mono text-sm font-semibold text-rose-600"
+                        />
+                      </div>
+                      <p className="text-[10px] text-surface-400 mt-1">
+                        Dikenakan hanya untuk menit yang melebihi batas toleransi shift (misal: telat 17 menit dengan toleransi 15 menit, maka dihitung 2 menit denda).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 5: SOP & Catatan Kebijakan */}
+              <div className="card p-5 space-y-3">
+                <label className="block text-xs font-bold uppercase tracking-wider text-surface-700">
+                  SOP & Catatan Internal Kebijakan Kompensasi
+                </label>
+                <textarea
+                  rows={3}
+                  value={ruleNotes}
+                  onChange={(e) => setRuleNotes(e.target.value)}
+                  placeholder="Tuliskan petunjuk atau SOP tambahan mengenai aturan penggajian, presensi, atau cuti..."
+                  className="input text-sm"
+                />
+                <p className="text-[11px] text-surface-400">
+                  Catatan ini sebagai panduan internal manajemen unit usaha dan dapat dilihat saat proses administrasi penggajian.
+                </p>
+              </div>
+
+              {/* Action Button */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={updateRuleMutation.isPending}
+                  className="btn-primary text-sm flex items-center gap-2 px-6 py-2.5 shadow-sm"
+                >
+                  <Save className="w-4 h-4" />
+                  {updateRuleMutation.isPending ? 'Menyimpan Perubahan...' : 'Simpan Kebijakan Gaji & Disiplin'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+
       {/* MODAL: Tambah / Edit Karyawan */}
       {isEmployeeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-surface-950/50 backdrop-blur-sm animate-fade-in">
@@ -1453,6 +2089,24 @@ export function SalaryManagementPage() {
                     onChange={(e) => setEmpAllowance(e.target.value)}
                     className="input font-mono text-sm"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-surface-700 mb-1">
+                    Kuota Libur Rutin Bulanan (Hari)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="31"
+                    value={empMonthlyDayOffQuota}
+                    onChange={(e) => setEmpMonthlyDayOffQuota(e.target.value)}
+                    placeholder="4"
+                    className="input font-mono text-sm"
+                  />
+                  <p className="text-[10px] text-surface-500 mt-0.5">
+                    Standar F&B / Retail: 4 hari libur/bulan (gaji pokok tetap utuh saat libur).
+                  </p>
                 </div>
 
                 <div>
@@ -1734,7 +2388,20 @@ export function SalaryManagementPage() {
                     type="date"
                     required
                     value={payPeriodStart}
-                    onChange={(e) => setPayPeriodStart(e.target.value)}
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      setPayPeriodStart(newStart);
+                      if (payEmployeeId) {
+                        const emp = employeesData?.find((e) => e.id.toString() === payEmployeeId);
+                        fetchAttendanceSummaryForPayment(
+                          payEmployeeId,
+                          newStart,
+                          payPeriodEnd,
+                          payPendingKasbonInfo.amount,
+                          emp?.allowance
+                        );
+                      }
+                    }}
                     className="input text-sm"
                   />
                 </div>
@@ -1747,7 +2414,20 @@ export function SalaryManagementPage() {
                     type="date"
                     required
                     value={payPeriodEnd}
-                    onChange={(e) => setPayPeriodEnd(e.target.value)}
+                    onChange={(e) => {
+                      const newEnd = e.target.value;
+                      setPayPeriodEnd(newEnd);
+                      if (payEmployeeId) {
+                        const emp = employeesData?.find((e) => e.id.toString() === payEmployeeId);
+                        fetchAttendanceSummaryForPayment(
+                          payEmployeeId,
+                          payPeriodStart,
+                          newEnd,
+                          payPendingKasbonInfo.amount,
+                          emp?.allowance
+                        );
+                      }
+                    }}
                     className="input text-sm"
                   />
                 </div>
@@ -1780,13 +2460,155 @@ export function SalaryManagementPage() {
                 </div>
               </div>
 
-              {/* Rincian Komponen Gaji */}
+              {/* Integrasi Rekap Absensi & Kebijakan Gaji Otomatis */}
+              {payAttendanceSummary && (
+                <div className="p-3.5 bg-gradient-to-br from-emerald-50/70 via-white to-rose-50/70 rounded-xl border border-surface-200 text-xs space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 border-b border-surface-200/60 pb-2">
+                    <div>
+                      <div className="flex items-center gap-1.5 font-bold text-surface-900">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Kebijakan Presensi & Kedisiplinan (Otomatis & Terkunci)</span>
+                      </div>
+                      <p className="text-[11px] text-surface-500 font-normal">
+                        Dihitung otomatis dari rekap absensi periode ini. Denda tidak dapat dicicil.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1 text-[11px] font-semibold text-surface-700">
+                      <span className="bg-white px-2 py-0.5 rounded-md border border-surface-200">
+                        Hadir: <strong>{payAttendanceSummary.totalPresent}</strong> Hari
+                      </span>
+                      <span className="bg-white px-2 py-0.5 rounded-md border border-surface-200">
+                        Tepat: <strong>{payAttendanceSummary.onTimeCount}</strong>
+                      </span>
+                      <span className="bg-white px-2 py-0.5 rounded-md border border-surface-200">
+                        Telat: <strong>{payAttendanceSummary.lateCount}</strong>x ({payAttendanceSummary.totalLateMinutes} mnt)
+                      </span>
+                      <span className="bg-white px-2 py-0.5 rounded-md border border-surface-200">
+                        Alfa: <strong>{payAttendanceSummary.alfaCount}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const emp = employeesData?.find((e) => e.id.toString() === payEmployeeId);
+                          fetchAttendanceSummaryForPayment(
+                            payEmployeeId,
+                            payPeriodStart,
+                            payPeriodEnd,
+                            payPendingKasbonInfo.amount,
+                            emp?.allowance
+                          );
+                          toast.success('Rekap absensi & kebijakan gaji diperbarui!');
+                        }}
+                        className="btn-secondary text-[11px] py-0.5 px-2 flex items-center gap-1 text-emerald-700 ml-1 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Hitung Ulang
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 4 Kartu Komponen Kebijakan Otomatis */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                    {/* 1. Uang Makan Kehadiran */}
+                    <div
+                      className={`p-2.5 rounded-lg border flex flex-col justify-between ${
+                        payMealAllowance > 0
+                          ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                          : 'bg-white border-surface-200 text-surface-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold flex items-center gap-1">
+                          <UtensilsCrossed className="w-3.5 h-3.5 text-emerald-600" />
+                          Uang Makan:
+                        </span>
+                        <span className="text-[10px] text-surface-500 font-mono">
+                          {payAttendanceDays} hr
+                        </span>
+                      </div>
+                      <span className="font-bold text-sm mt-1 text-emerald-700">
+                        {payMealAllowance > 0 ? `+ ${formatRupiah(payMealAllowance)}` : 'Rp 0'}
+                      </span>
+                    </div>
+
+                    {/* 2. Bonus Tepat Waktu */}
+                    <div
+                      className={`p-2.5 rounded-lg border flex flex-col justify-between ${
+                        payDisciplineBonus > 0
+                          ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                          : 'bg-white border-surface-200 text-surface-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Bonus Disiplin:
+                        </span>
+                        <span className="text-[10px] text-surface-500 font-mono">
+                          {payOnTimeDays} hr
+                        </span>
+                      </div>
+                      <span className="font-bold text-sm mt-1 text-emerald-700">
+                        {payDisciplineBonus > 0 ? `+ ${formatRupiah(payDisciplineBonus)}` : 'Rp 0'}
+                      </span>
+                    </div>
+
+                    {/* 3. Denda Keterlambatan */}
+                    <div
+                      className={`p-2.5 rounded-lg border flex flex-col justify-between ${
+                        payLateDeduction > 0
+                          ? 'bg-rose-50/90 border-rose-300 text-rose-950'
+                          : 'bg-white border-surface-200 text-surface-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-rose-600" />
+                          Denda Telat:
+                        </span>
+                        <span className="text-[10px] text-rose-500 font-mono">
+                          {payLateDays}x ({payLateMinutes} mnt)
+                        </span>
+                      </div>
+                      <span className="font-bold text-sm mt-1 text-rose-600">
+                        {payLateDeduction > 0 ? `- ${formatRupiah(payLateDeduction)}` : 'Rp 0 (Nihil)'}
+                      </span>
+                    </div>
+
+                    {/* 4. Potongan Ketidakhadiran (Alfa) */}
+                    <div
+                      className={`p-2.5 rounded-lg border flex flex-col justify-between ${
+                        payAbsenceDeduction > 0
+                          ? 'bg-rose-50/90 border-rose-300 text-rose-950'
+                          : 'bg-white border-surface-200 text-surface-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold flex items-center gap-1">
+                          <UserX className="w-3.5 h-3.5 text-rose-600" />
+                          Potongan Alfa:
+                        </span>
+                        <span className="text-[10px] text-rose-500 font-mono">
+                          {payAlfaDays} hr
+                        </span>
+                      </div>
+                      <span className="font-bold text-sm mt-1 text-rose-600">
+                        {payAbsenceDeduction > 0 ? `- ${formatRupiah(payAbsenceDeduction)}` : 'Rp 0 (Nihil)'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Rincian Komponen Penerimaan (Penghasilan) */}
               <div className="bg-surface-50 p-4 rounded-xl border border-surface-200 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-surface-600">
-                  Rincian Penerimaan & Potongan
+                <p className="text-xs font-bold uppercase tracking-wider text-surface-700 flex items-center justify-between">
+                  <span>1. Komponen Penerimaan (Penghasilan)</span>
+                  <span className="text-[11px] font-mono font-semibold text-emerald-700">
+                    Subtotal Kotor: +{formatRupiah(previewTotalIncome)}
+                  </span>
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-surface-700 mb-1">
                       Gaji Pokok (Rp) <span className="text-rose-500">*</span>
@@ -1804,7 +2626,7 @@ export function SalaryManagementPage() {
 
                   <div>
                     <label className="block text-xs font-medium text-surface-700 mb-1">
-                      Tunjangan (Rp, Makan/Transport)
+                      Tunjangan Tetap Staf (Rp)
                     </label>
                     <input
                       type="number"
@@ -1812,13 +2634,17 @@ export function SalaryManagementPage() {
                       step="1000"
                       value={payAllowance}
                       onChange={(e) => setPayAllowance(e.target.value)}
+                      placeholder="Contoh: Transport/Jabatan"
                       className="input font-mono text-sm bg-white"
                     />
+                    <p className="text-[10px] text-surface-400 mt-1">
+                      Tunjangan tetap bulanan di luar uang makan harian.
+                    </p>
                   </div>
 
                   <div>
                     <label className="block text-xs font-medium text-surface-700 mb-1">
-                      Bonus / Insentif Tambahan (Rp)
+                      Bonus Tambahan / Lembur (Rp)
                     </label>
                     <input
                       type="number"
@@ -1826,18 +2652,42 @@ export function SalaryManagementPage() {
                       step="1000"
                       value={payBonus}
                       onChange={(e) => setPayBonus(e.target.value)}
+                      placeholder="0"
                       className="input font-mono text-sm bg-white text-emerald-600 font-semibold"
                     />
+                    <p className="text-[10px] text-surface-400 mt-1">
+                      Bonus tambahan/lembur di luar bonus disiplin.
+                    </p>
                   </div>
+                </div>
+              </div>
 
+              {/* Rincian Pemotongan Kasbon / Pinjaman Karyawan (DAPAT DICICIL) */}
+              <div className="bg-amber-50/60 p-4 rounded-xl border border-amber-200 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                   <div>
-                    <label className="block text-xs font-medium text-surface-700 mb-1 flex items-center justify-between">
-                      <span>Potongan / Kasbon (Rp)</span>
-                      {payPendingKasbonInfo.count > 0 && (
-                        <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-bold">
-                          {payPendingKasbonInfo.count} Kasbon Terdeteksi
-                        </span>
-                      )}
+                    <p className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                      2. Pemotongan Kasbon / Pinjaman Staf (Dapat Dicicil)
+                    </p>
+                    <p className="text-[11px] text-amber-800">
+                      Terpisah dari denda presensi. Hanya nominal di bawah ini yang melunasi/mencicil saldo kasbon staf.
+                    </p>
+                  </div>
+                  {payPendingKasbonInfo.amount > 0 ? (
+                    <span className="text-xs font-bold text-amber-900 bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-300 font-mono self-start sm:self-auto">
+                      Sisa Kasbon Aktif: {formatRupiah(payPendingKasbonInfo.amount)} ({payPendingKasbonInfo.count} catatan)
+                    </span>
+                  ) : (
+                    <span className="text-xs text-surface-500 bg-white px-2 py-0.5 rounded-lg border border-surface-200">
+                      Tidak ada kasbon aktif
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start pt-1">
+                  <div>
+                    <label className="block text-xs font-semibold text-surface-800 mb-1">
+                      Nominal Potong Kasbon Periode Ini (Rp)
                     </label>
                     <input
                       type="number"
@@ -1845,27 +2695,62 @@ export function SalaryManagementPage() {
                       step="1000"
                       value={payDeductions}
                       onChange={(e) => setPayDeductions(e.target.value)}
+                      placeholder="0 = Tidak dipotong periode ini"
                       className="input font-mono text-sm bg-white text-rose-600 font-bold"
                     />
+                    <p className="text-[10px] text-surface-500 mt-1">
+                      Isi 0 jika kasbon belum ingin dipotong, atau isi sebagian jika dicicil.
+                    </p>
                   </div>
+
+                  {payPendingKasbonInfo.amount > 0 && (
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-semibold text-surface-600">Pilihan Cepat Cicilan:</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setPayDeductions(payPendingKasbonInfo.amount.toString())}
+                          className="btn text-[11px] py-1 px-2.5 bg-amber-200 hover:bg-amber-300 text-amber-950 font-semibold rounded-lg cursor-pointer"
+                        >
+                          Potong Penuh (Lunas: {formatRupiah(payPendingKasbonInfo.amount)})
+                        </button>
+                        {payPendingKasbonInfo.amount >= 50000 && (
+                          <button
+                            type="button"
+                            onClick={() => setPayDeductions(Math.round(payPendingKasbonInfo.amount / 2).toString())}
+                            className="btn text-[11px] py-1 px-2.5 bg-white hover:bg-surface-100 border border-surface-300 text-surface-700 font-medium rounded-lg cursor-pointer"
+                          >
+                            Cicil 50% ({formatRupiah(Math.round(payPendingKasbonInfo.amount / 2))})
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setPayDeductions('0')}
+                          className="btn text-[11px] py-1 px-2 bg-white hover:bg-surface-100 border border-surface-300 text-surface-600 rounded-lg cursor-pointer"
+                        >
+                          Lewatkan (Rp 0)
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Notifikasi Akumulasi Kasbon Dinamis (Sesuai Nominal Input) */}
+                {/* Notifikasi Status Kasbon Setelah Pemotongan */}
                 {payPendingKasbonInfo.amount > 0 &&
                   (() => {
                     const entered = Number(payDeductions) || 0;
                     const totalPending = payPendingKasbonInfo.amount;
 
-                    if (entered === 0) {
+                    if (entered <= 0) {
                       return (
-                        <div className="bg-surface-100 p-2.5 rounded-lg border border-surface-200 text-xs text-surface-700 flex items-start gap-2">
+                        <div className="bg-white p-2.5 rounded-lg border border-amber-200 text-xs text-surface-700 flex items-start gap-2">
                           <AlertCircle className="w-4 h-4 text-surface-500 shrink-0 mt-0.5" />
                           <div>
                             <p className="font-semibold text-surface-900">
                               Kasbon Tidak Dipotong pada Periode Ini
                             </p>
                             <p className="text-[11px] text-surface-600 mt-0.5">
-                              Nominal potongan diisi Rp 0. Sisa kasbon staf ({formatRupiah(totalPending)}) tidak akan terpotong dan tetap utuh sebagai kasbon aktif.
+                              Nominal potongan kasbon diisi Rp 0. Sisa hutang kasbon staf ({formatRupiah(totalPending)}) tidak akan terpotong dan tetap utuh sebagai kasbon aktif.
                             </p>
                           </div>
                         </div>
@@ -1898,25 +2783,40 @@ export function SalaryManagementPage() {
                           <p className="text-[11px] text-emerald-700 mt-0.5">
                             Seluruh kasbon aktif akan lunas dipotong dari gaji ini dan catatan kasbon staf otomatis kembali Rp 0.
                             {entered > totalPending && (
-                              <span> (Kelebihan {formatRupiah(entered - totalPending)} dicatat sebagai potongan tambahan).</span>
+                              <span> (Kelebihan {formatRupiah(entered - totalPending)} dicatat sebagai potongan kasbon tambahan).</span>
                             )}
                           </p>
                         </div>
                       </div>
                     );
                   })()}
+              </div>
 
-                {/* Total Take Home Pay */}
-                <div className="pt-2 border-t border-surface-200 flex items-center justify-between">
+              {/* Ringkasan Total & Take Home Pay */}
+              <div className="bg-surface-900 text-white p-4 rounded-xl space-y-2.5 shadow-md">
+                <div className="flex items-center justify-between text-xs text-surface-300">
+                  <span>Total Penerimaan Kotor (+):</span>
+                  <span className="font-mono text-emerald-400 font-semibold text-sm">
+                    +{formatRupiah(previewTotalIncome)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-surface-300">
+                  <span>Total Seluruh Potongan (-):</span>
+                  <span className="font-mono text-rose-400 font-semibold text-sm">
+                    -{formatRupiah(previewTotalDeductions)}
+                  </span>
+                </div>
+                <div className="pt-2.5 border-t border-surface-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <div>
-                    <p className="text-xs text-surface-500 font-medium">Gaji Bersih Diterima (Take Home Pay)</p>
-                    <p className="text-lg font-bold text-emerald-600 font-mono">
+                    <p className="text-xs text-surface-400 font-medium">Gaji Bersih Diterima (Take Home Pay)</p>
+                    <p className="text-2xl font-bold text-emerald-400 font-mono">
                       {formatRupiah(previewNetSalary)}
                     </p>
                   </div>
-                  <span className="text-xs text-surface-400 font-mono">
-                    (Gaji + Tunjangan + Bonus - Kasbon)
-                  </span>
+                  <div className="text-left sm:text-right text-[11px] text-surface-400 font-mono space-y-0.5">
+                    <p>Denda Presensi: -{formatRupiah(numLate + numAbsence)} (Non-Cicil)</p>
+                    <p>Potong Kasbon: -{formatRupiah(numKasbon)}</p>
+                  </div>
                 </div>
               </div>
 
@@ -2044,6 +2944,21 @@ export function SalaryManagementPage() {
                     {formatTanggalJam(selectedSlipPayment.paymentDate)}
                   </p>
                 </div>
+                {(selectedSlipPayment.attendanceDays !== undefined && (selectedSlipPayment.attendanceDays > 0 || (selectedSlipPayment.liburDays || 0) > 0 || (selectedSlipPayment.alfaDays || 0) > 0)) && (
+                  <div className="col-span-2 bg-blue-50/70 p-2.5 rounded-lg border border-blue-200/80 text-[11px] text-blue-900 flex flex-wrap items-center justify-between gap-1.5">
+                    <span>
+                      <strong>Presensi Karyawan:</strong> Hadir <strong>{selectedSlipPayment.attendanceDays || 0}</strong> Hari
+                    </span>
+                    <span className="flex flex-wrap gap-1.5">
+                      <span>Tepat Waktu: <strong>{selectedSlipPayment.onTimeDays || 0}</strong></span>
+                      <span>• Telat: <strong>{selectedSlipPayment.lateDays || 0}</strong>x</span>
+                      <span>• Libur (Off): <strong>{selectedSlipPayment.liburDays || 0}</strong></span>
+                      <span>• Cuti: <strong>{selectedSlipPayment.cutiDays || 0}</strong></span>
+                      <span>• Alfa: <strong>{selectedSlipPayment.alfaDays || 0}</strong></span>
+                      <span>• Izin/Sakit: <strong>{(selectedSlipPayment.izinDays || 0) + (selectedSlipPayment.sakitDays || 0)}</strong></span>
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Breakdown */}
@@ -2059,48 +2974,147 @@ export function SalaryManagementPage() {
                   </span>
                 </div>
 
-                {selectedSlipPayment.allowance > 0 && (
-                  <div className="flex justify-between py-1 border-b border-dashed border-surface-200">
-                    <span className="text-surface-600">Tunjangan Tetap (Makan & Transport)</span>
-                    <span className="font-mono font-medium text-surface-900">
-                      +{formatRupiah(selectedSlipPayment.allowance)}
-                    </span>
-                  </div>
-                )}
-
-                {selectedSlipPayment.bonus > 0 && (
-                  <div className="flex justify-between py-1 border-b border-dashed border-surface-200 text-emerald-600">
-                    <span>Bonus & Insentif Tambahan</span>
-                    <span className="font-mono font-semibold">
-                      +{formatRupiah(selectedSlipPayment.bonus)}
-                    </span>
-                  </div>
-                )}
-
-                {selectedSlipPayment.deductions > 0 && (
-                  <div className="py-1 border-b border-dashed border-surface-200">
-                    <div className="flex justify-between text-rose-600">
-                      <span>Potongan / Kasbon</span>
-                      <span className="font-mono font-semibold">
-                        -{formatRupiah(selectedSlipPayment.deductions)}
-                      </span>
+                {/* Uang Makan Kehadiran Terpisah */}
+                {(selectedSlipPayment.mealAllowance ?? 0) > 0 && (
+                  <div className="flex justify-between py-1 border-b border-dashed border-surface-200 text-emerald-700">
+                    <div>
+                      <span className="font-semibold">Uang Makan Kehadiran</span>
+                      <p className="text-[10px] text-emerald-600">
+                        {selectedSlipPayment.attendanceDays || 0} hari kerja hadir
+                      </p>
                     </div>
-                    {selectedSlipPayment.appliedDeductions && selectedSlipPayment.appliedDeductions.length > 0 && (
-                      <div className="mt-1 pl-2 text-[11px] text-surface-500 space-y-0.5">
-                        {selectedSlipPayment.appliedDeductions.map((item) => (
-                          <div key={item.id} className="flex justify-between">
-                            <span>
-                              • Kasbon ({formatTanggal(item.date)}) {item.notes ? `- ${item.notes}` : ''}:
-                            </span>
-                            <span className="font-mono text-rose-600">
-                              Dipotong {formatRupiah(item.amountApplied)} {item.remainingAmount > 0 ? `(Sisa: ${formatRupiah(item.remainingAmount)})` : '(Lunas)'}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <span className="font-mono font-bold">
+                      +{formatRupiah(selectedSlipPayment.mealAllowance || 0)}
+                    </span>
                   </div>
                 )}
+
+                {/* Tunjangan Tetap Staf */}
+                {(() => {
+                  const isLegacy = Math.abs((selectedSlipPayment.baseSalary + selectedSlipPayment.allowance + selectedSlipPayment.bonus - selectedSlipPayment.deductions) - selectedSlipPayment.netSalary) < 0.01;
+                  const displayAllow = isLegacy
+                    ? Math.max(0, selectedSlipPayment.allowance - (selectedSlipPayment.mealAllowance || 0))
+                    : (selectedSlipPayment.allowance || 0);
+                  if (displayAllow > 0) {
+                    return (
+                      <div className="flex justify-between py-1 border-b border-dashed border-surface-200">
+                        <div>
+                          <span className="text-surface-600">Tunjangan Tetap Staf</span>
+                          <p className="text-[10px] text-surface-400">Jabatan, Transport, Operasional</p>
+                        </div>
+                        <span className="font-mono font-medium text-surface-900">
+                          +{formatRupiah(displayAllow)}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Bonus Kedisiplinan Terpisah */}
+                {(selectedSlipPayment.disciplineBonus ?? 0) > 0 && (
+                  <div className="flex justify-between py-1 border-b border-dashed border-surface-200 text-emerald-700">
+                    <div>
+                      <span className="font-semibold">Bonus Kedisiplinan Presensi</span>
+                      <p className="text-[10px] text-emerald-600">
+                        {selectedSlipPayment.onTimeDays || 0} hari kerja hadir tepat waktu
+                      </p>
+                    </div>
+                    <span className="font-mono font-bold">
+                      +{formatRupiah(selectedSlipPayment.disciplineBonus || 0)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Bonus & Insentif Tambahan */}
+                {(() => {
+                  const isLegacy = Math.abs((selectedSlipPayment.baseSalary + selectedSlipPayment.allowance + selectedSlipPayment.bonus - selectedSlipPayment.deductions) - selectedSlipPayment.netSalary) < 0.01;
+                  const displayBonus = isLegacy
+                    ? Math.max(0, selectedSlipPayment.bonus - (selectedSlipPayment.disciplineBonus || 0))
+                    : (selectedSlipPayment.bonus || 0);
+                  if (displayBonus > 0) {
+                    return (
+                      <div className="flex justify-between py-1 border-b border-dashed border-surface-200 text-emerald-600">
+                        <div>
+                          <span className="font-semibold">Bonus & Insentif Tambahan</span>
+                          <p className="text-[10px] text-emerald-500">Lembur, Target, Performa Kerja</p>
+                        </div>
+                        <span className="font-mono font-semibold">
+                          +{formatRupiah(displayBonus)}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Potongan Keterlambatan Terpisah */}
+                {(selectedSlipPayment.lateDeduction ?? 0) > 0 && (
+                  <div className="flex justify-between py-1 border-b border-dashed border-surface-200 text-rose-700">
+                    <div>
+                      <span className="font-semibold">Potongan Keterlambatan Absensi (Denda Telat)</span>
+                      <p className="text-[10px] text-rose-600">
+                        {selectedSlipPayment.lateDays || 0}x terlambat ({selectedSlipPayment.lateMinutes || 0} menit)
+                      </p>
+                    </div>
+                    <span className="font-mono font-bold">
+                      -{formatRupiah(selectedSlipPayment.lateDeduction || 0)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Potongan Ketidakhadiran (Alfa) Terpisah */}
+                {(selectedSlipPayment.absenceDeduction ?? 0) > 0 && (
+                  <div className="flex justify-between py-1 border-b border-dashed border-surface-200 text-rose-700">
+                    <div>
+                      <span className="font-semibold">Potongan Ketidakhadiran (Denda Alfa)</span>
+                      <p className="text-[10px] text-rose-600">
+                        {selectedSlipPayment.alfaDays || 0} hari tidak masuk tanpa keterangan
+                      </p>
+                    </div>
+                    <span className="font-mono font-bold">
+                      -{formatRupiah(selectedSlipPayment.absenceDeduction || 0)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Potongan Kasbon / Pinjaman Staf (Dapat Dicicil) */}
+                {(() => {
+                  const isLegacy = Math.abs((selectedSlipPayment.baseSalary + selectedSlipPayment.allowance + selectedSlipPayment.bonus - selectedSlipPayment.deductions) - selectedSlipPayment.netSalary) < 0.01;
+                  const displayKasbon = isLegacy
+                    ? Math.max(0, selectedSlipPayment.deductions - (selectedSlipPayment.lateDeduction || 0) - (selectedSlipPayment.absenceDeduction || 0))
+                    : (selectedSlipPayment.deductions || 0);
+                  if (displayKasbon > 0) {
+                    return (
+                      <div className="py-1 border-b border-dashed border-surface-200">
+                        <div className="flex justify-between text-rose-600">
+                          <div>
+                            <span className="font-semibold">Potongan Kasbon / Pinjaman Staf</span>
+                            <p className="text-[10px] text-rose-500">Cicilan / pelunasan pinjaman kasbon</p>
+                          </div>
+                          <span className="font-mono font-bold">
+                            -{formatRupiah(displayKasbon)}
+                          </span>
+                        </div>
+                        {selectedSlipPayment.appliedDeductions && selectedSlipPayment.appliedDeductions.length > 0 && (
+                          <div className="mt-1 pl-2 text-[11px] text-surface-500 space-y-0.5">
+                            {selectedSlipPayment.appliedDeductions.map((item) => (
+                              <div key={item.id} className="flex justify-between">
+                                <span>
+                                  • Kasbon ({formatTanggal(item.date)}) {item.notes ? `- ${item.notes}` : ''}:
+                                </span>
+                                <span className="font-mono text-rose-600">
+                                  Dipotong {formatRupiah(item.amountApplied)} {item.remainingAmount > 0 ? `(Sisa: ${formatRupiah(item.remainingAmount)})` : '(Lunas)'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* Net Total */}
                 <div className="flex justify-between items-center pt-2 border-t-2 border-surface-300">

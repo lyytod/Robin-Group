@@ -14,7 +14,7 @@ export interface PaginationMeta {
 }
 
 // User Types
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'KASIR';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'KASIR' | 'AGENT';
 
 export interface User {
   id: number;
@@ -60,6 +60,7 @@ export interface Product {
   businessId: number;
   code: string;
   name: string;
+  category?: string;
   unit: string;
   sellingPrice: number;
   purchasePrice: number;

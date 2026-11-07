@@ -5,8 +5,8 @@ import { UserRole } from '../types/index.js';
 
 const router = Router();
 
-// Semua rute inventaris memerlukan autentikasi, hak akses unit usaha, dan peran Super Admin atau Admin
-router.use(authenticate, requireBusinessAccess, requireRoles(UserRole.SUPER_ADMIN, UserRole.ADMIN));
+// Semua rute inventaris memerlukan autentikasi, hak akses unit usaha, dan peran Super Admin, Admin, atau Agent
+router.use(authenticate, requireBusinessAccess, requireRoles(UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.AGENT));
 
 router.get('/', InventoryController.getAll);
 router.post('/', InventoryController.create);

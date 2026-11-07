@@ -79,6 +79,56 @@ export class ReportController {
   }
 
   /**
+   * GET /api/reports/sales
+   */
+  static async getSalesReport(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const businessId = req.businessId;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+
+      const result = await ReportService.getSalesReport({
+        businessId,
+        startDate,
+        endDate,
+      });
+
+      sendSuccess(res, result, 'Laporan penjualan berhasil diambil');
+    } catch (error: any) {
+      sendError(res, error.message || 'Gagal memuat laporan penjualan', 400);
+    }
+  }
+
+  /**
+   * GET /api/reports/export/sales-excel
+   */
+  static async exportSalesExcel(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const businessId = req.businessId;
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+
+      const buffer = await ReportService.exportSalesExcel({
+        businessId,
+        startDate,
+        endDate,
+      });
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `Laporan_Penjualan_${dateStr}.xlsx`;
+
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+    } catch (error: any) {
+      sendError(res, error.message || 'Gagal mengekspor laporan penjualan ke Excel', 400);
+    }
+  }
+
+  /**
    * GET /api/reports/export/excel
    */
   static async exportExcel(req: AuthenticatedRequest, res: Response): Promise<void> {
